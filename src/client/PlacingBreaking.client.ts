@@ -6,13 +6,13 @@ let player = Players.LocalPlayer
 let mouse = Players.LocalPlayer.GetMouse();
 let hoveredOnBlock: Part | undefined;
 let hoveredFace: Enum.NormalId;
-let selectedBlock: blockIds = "generic";
+let selectedBlock: blockIds = "grass";
 
 async function startHover(block: Part) {
     function enableHoverEffect(part: Part) {
         let children = part.GetChildren()
         children.every((child, index, array)=>{
-            if(classIs(child, "Texture")) {
+            if(classIs(child, "Texture") || classIs(child, "Decal")) {
                 let childTexture = child as Texture;
                 childTexture.Transparency = 0.2;
             }
@@ -22,7 +22,7 @@ async function startHover(block: Part) {
     function disableHoverEffect(part: Part) {
         let children = part.GetChildren()
         children.every((child, index, array)=>{
-            if(classIs(child, "Texture")) {
+            if(classIs(child, "Texture") || classIs(child, "Decal")) {
                 let childTexture = child as Texture;
                 childTexture.Transparency = 0;
             }

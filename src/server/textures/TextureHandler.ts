@@ -1,5 +1,9 @@
 import { BlockState } from "server/BlockState"
 import { DefaultTextureHandler } from "./DefaultTextureHandler";
+import { GrassTextureHandler } from "./GrassTextureHandler"
+import { DirtTextureHandler } from "./DirtTextureHandler";
+import { StoneTextureHandler } from "./StoneTextureHandler";
+import { BrickTextureHandler } from "./BrickTextureHandler";
 
 /**
  * Finds the correct TextureHandler for block.id and applies it to the block
@@ -7,8 +11,21 @@ import { DefaultTextureHandler } from "./DefaultTextureHandler";
  */
 function applyTexture(block: BlockState) {
     switch (block.id) {
+        case "grass":
+            GrassTextureHandler.applyTexture(block);
+            break;
+        case "dirt":
+            DirtTextureHandler.applyTexture(block);
+            break;
+        case "stone":
+            StoneTextureHandler.applyTexture(block);
+            break;
+        case "brick": 
+            BrickTextureHandler.applyTexture(block);
+            break;
         default:
             DefaultTextureHandler.applyTexture(block);
+            break;
     }
 }
 
