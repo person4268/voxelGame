@@ -151,4 +151,4 @@ evtDestroy.Connect((player, blockUnknown)=>{
     }    
 })
 
-fill(-5, 0, -5, 5, 0, 5, "obsidian");
+fill(-2, 0, -2, 2, 0, 2, "obsidian");
