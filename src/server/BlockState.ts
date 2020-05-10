@@ -6,7 +6,8 @@ export class BlockState {
     position: Vector3 = new Vector3(0, 0, 0);
     block:Part = new Instance("Part");
     blockData:Object|undefined = {};
-
+    interactable: boolean = false;
+    destructable: boolean = false;
     getRealPosition(): Vector3 {
         return this.position.mul(globals.blockSize);
     }
@@ -22,4 +23,12 @@ export class BlockState {
         this.block.Parent = game.Workspace.FindFirstChild("Blocks");
 
     }
+
+    destroyBlock(): void {
+        if(this.block) {
+            this.block.Destroy();
+            this.block = new Instance("Part");
+        }
+    }
+    interact(player: Player, face: Enum.NormalId) {}
 }
