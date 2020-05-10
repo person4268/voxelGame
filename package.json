@@ -11,5 +11,8 @@
   "license": "ISC",
   "devDependencies": {
     "@rbxts/types": "^1.0.355"
+  },
+  "dependencies": {
+    "@rbxts/net": "^1.2.8"
   }
 }
