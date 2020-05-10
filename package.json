@@ -1,5 +1,5 @@
 {
-  "name": "voxelGame",
+  "name": "voxelgame",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -8,7 +8,7 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@rbxts/types": "^1.0.355"
   },
