@@ -8,9 +8,10 @@ const globals = {
         grass_side: "rbxassetid://5012475243",
         dirt: "rbxassetid://5012509804",
         brick: "rbxassetid://5012476244",
-        stone: "rbxassetid://5012478258"
+        stone: "rbxassetid://5012478258",
+        obsidian: "rbxassetid://5012653602"
     }
 }
 
 export default globals
-export type blockIds = "generic" | "grass" | "dirt" | "stone" | "brick"
+export type blockIds = "generic" | "grass" | "dirt" | "stone" | "brick" | "obsidian"

@@ -2,6 +2,7 @@ import { BlockState } from "server/BlockState"
 import globals, { blockIds } from "shared/globals"
 import Net from "@rbxts/net";
 import { isBlockReachable } from "shared/isBlockReachable";
+import { BedrockBlockState } from "./BedrockBlockState";
 
 let evtInteract = Net.CreateEvent("InteractBlock");
 let evtDestroy = Net.CreateEvent("DestroyBlock");
@@ -26,8 +27,10 @@ let blocks: Map<String, BlockStates> = new Map();
  * Gets the correct block state for specified id because a block might want to have its own blockstate
  * @param id 
  */
-function getCorrectBlockState(id: string) {
+function getCorrectBlockState(id: blockIds) {
     switch (id) {
+        case "obsidian": 
+            return BedrockBlockState;
         default:
             return BlockState;
     }
@@ -142,8 +145,10 @@ evtDestroy.Connect((player, blockUnknown)=>{
     let block = blockUnknown as Part;
     let [clickedOnBlock, dividedPos, interactCheckResult] = interactCheck(player, block);
     if(interactCheckResult && clickedOnBlock) {
-        deleteBlock(clickedOnBlock);
+        if(!clickedOnBlock.unbreakable) {
+            deleteBlock(clickedOnBlock);
+        }
     }    
 })
 
-fill(-10, 0, -10, 10, 0, 10, "generic");
+fill(-5, 0, -5, 5, 0, 5, "obsidian");

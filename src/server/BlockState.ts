@@ -7,7 +7,7 @@ export class BlockState {
     block:Part = new Instance("Part");
     blockData:Object|undefined = {};
     interactable: boolean = false;
-    destructable: boolean = false;
+    unbreakable: boolean = false;
     getRealPosition(): Vector3 {
         return this.position.mul(globals.blockSize);
     }
