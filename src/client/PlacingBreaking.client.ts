@@ -2,6 +2,7 @@ import { isBlockReachable } from "shared/isBlockReachable";
 import Net from "@rbxts/net"
 import { blockIds } from "shared/globals";
 let Players = game.GetService("Players");
+let UIS = game.GetService("UserInputService");
 let player = Players.LocalPlayer
 let mouse = Players.LocalPlayer.GetMouse();
 let hoveredOnBlock: Part | undefined;
@@ -70,6 +71,28 @@ mouse.Button1Down.Connect(()=>{
         Net.WaitForClientEventAsync("DestroyBlock").then(event=>{
             event.SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
         })
+    }
+});
+
+UIS.InputBegan.Connect((input: InputObject)=>{
+    if(input.UserInputType === Enum.UserInputType.Keyboard) {
+        switch(input.KeyCode) {
+            case Enum.KeyCode.One:
+                selectedBlock = "generic";
+                break;
+            case Enum.KeyCode.Two:
+                selectedBlock = "grass";
+                break;
+            case Enum.KeyCode.Three:
+                selectedBlock = "dirt";
+                break;
+            case Enum.KeyCode.Four:
+                selectedBlock = "stone";
+                break;
+            case Enum.KeyCode.Five:
+                selectedBlock = "brick";
+                break;
+        } 
     }
 });
 
