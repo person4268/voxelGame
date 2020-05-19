@@ -1,10 +1,8 @@
 import { BlockState } from "server/BlockState"
-import { DefaultTextureHandler } from "./DefaultTextureHandler";
-import { GrassTextureHandler } from "./GrassTextureHandler"
-import { DirtTextureHandler } from "./DirtTextureHandler";
-import { StoneTextureHandler } from "./StoneTextureHandler";
-import { BrickTextureHandler } from "./BrickTextureHandler";
-import { ObsidianTextureHandler } from "./ObsidianTextureHandler";
+import { Generic6Side } from "./Generic6Side";
+import globals from "shared/globals";
+import { Generic5Side1Top } from "./Generic5Side1Top";
+import { Generic4Side1Top1Bottom } from "./Generic4Side1Top1Bottom";
 
 /**
  * Finds the correct TextureHandler for block.id and applies it to the block
@@ -13,22 +11,22 @@ import { ObsidianTextureHandler } from "./ObsidianTextureHandler";
 function applyTexture(block: BlockState) {
     switch (block.id) {
         case "grass":
-            GrassTextureHandler.applyTexture(block);
-            break;
+            Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt);
+        break;
         case "dirt":
-            DirtTextureHandler.applyTexture(block);
+            Generic6Side(block, globals.textures.dirt);
             break;
         case "stone":
-            StoneTextureHandler.applyTexture(block);
+            Generic6Side(block, globals.textures.stone);
             break;
         case "brick": 
-            BrickTextureHandler.applyTexture(block);
+            Generic6Side(block, globals.textures.brick);
             break;
         case "obsidian":
-            ObsidianTextureHandler.applyTexture(block);
+            Generic6Side(block, globals.textures.obsidian);
             break;
         default:
-            DefaultTextureHandler.applyTexture(block);
+            Generic6Side(block, globals.textures.grid);
             break;
     }
 }
