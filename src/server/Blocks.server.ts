@@ -151,4 +151,8 @@ evtDestroy.Connect((player, blockUnknown)=>{
     }    
 })
 
-fill(-2, 0, -2, 2, 0, 2, "obsidian");
+const startingPlatformX = 25
+const startingPlatformZ = 25
+fill(-startingPlatformX, 0, -startingPlatformZ, startingPlatformX, 0, startingPlatformZ, "obsidian");
+fill(-startingPlatformX, 1, -startingPlatformZ, startingPlatformX, 20, startingPlatformZ, "dirt");
+fill(-startingPlatformX, 21, -startingPlatformZ, startingPlatformX, 21, startingPlatformZ, "grass");

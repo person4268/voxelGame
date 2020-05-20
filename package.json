@@ -12,6 +12,7 @@
     "@rbxts/types": "^1.0.355"
   },
   "dependencies": {
-    "@rbxts/net": "^1.2.8"
+    "@rbxts/net": "^1.2.8",
+    "@rbxts/roact": "^1.2.0"
   }
 }
