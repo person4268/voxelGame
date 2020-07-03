@@ -16,6 +16,7 @@ function applyTexture(block: BlockState) {
         case "dirt":
             Generic6Side(block, globals.textures.dirt);
             break;
+            
         case "stone":
             Generic6Side(block, globals.textures.stone);
             break;
