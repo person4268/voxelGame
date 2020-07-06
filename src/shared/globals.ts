@@ -4,12 +4,12 @@ const globals = {
     reachLength: 3 * 5,
     textures: {
         grid: "rbxassetid://5009068659",
-        grass_top: "rbxassetid://5012474610",
-        grass_side: "rbxassetid://5012475243",
-        dirt: "rbxassetid://5012509804",
-        brick: "rbxassetid://5012476244",
-        stone: "rbxassetid://5012478258",
-        obsidian: "rbxassetid://5012653602"
+        grass_top: "rbxassetid://5295578161",
+        grass_side: "rbxassetid://5295598324",
+        dirt: "rbxassetid://5295593115",
+        brick: "rbxassetid://5295595753",
+        stone: "rbxassetid://5295590108",
+        obsidian: "rbxassetid://5295587145"
     }
 }
 
