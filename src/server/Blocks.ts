@@ -18,7 +18,7 @@ class BlockData {
     }
 }
 
-type BlockStates = BlockState; // | BlockState2 | BlockState3
+type BlockStates = BlockState | BedrockBlockState; // | BlockState2 | BlockState3
 
 /* In format of x,y,z */
 let blocks: Map<String, BlockStates> = new Map();
@@ -29,7 +29,7 @@ let blocks: Map<String, BlockStates> = new Map();
  */
 function getCorrectBlockState(id: blockIds) {
     switch (id) {
-        case "obsidian": 
+        case "obsidian":
             return BedrockBlockState;
         default:
             return BlockState;
@@ -51,17 +51,17 @@ function createBlocksFromArray(blocks: Array<BlockData>): void {
     });
 }
 
-function fill(startX: number, startY: number, startZ: number, endX: number, endY: number, endZ: number, block: blockIds, blockData?: Object) {
+function fill(startPos: Vector3, endPos: Vector3, block: blockIds, blockData?: Object) {
     let blockArray: Array<BlockData> = [];
-    for (let x = startX; x <= endX; x++) {
-        for (let y = startY; y <= endY; y++) {
-            for (let z = startZ; z <= endZ; z++) {
+    for (let x = startPos.X; x <= endPos.X; x++) {
+        for (let y = startPos.Y; y <= endPos.Y; y++) {
+            for (let z = startPos.Z; z <= endPos.Z; z++) {
                 blockArray.push(new BlockData(new Vector3(x, y, z), block, blockData));
-                if (startZ - endZ === 0) break;
+                if (startPos.Z - endPos.Z === 0) break;
             }
-            if (startY - endY === 0) break;
+            if (startPos.Y - endPos.Y === 0) break;
         }
-        if (startX - endX === 0) break;
+        if (startPos.X - endPos.X === 0) break;
     }
     createBlocksFromArray(blockArray);
 }
@@ -98,7 +98,7 @@ function placeBlockFromOtherBlock(player: Player, blockPosition: Vector3, face: 
     }
 }
 
-function interactCheck(player: Player, block: Part): [BlockStates|undefined, Vector3, boolean] {
+function interactCheck(player: Player, block: Part): [BlockStates | undefined, Vector3, boolean] {
     if (player.Character) {
         let head = player.Character.WaitForChild("Head") as Part | undefined;
         if (head) {
@@ -109,7 +109,7 @@ function interactCheck(player: Player, block: Part): [BlockStates|undefined, Vec
                         let dividedPos = block.Position.div(globals.blockSize);
                         let clickedOnBlock = blocks.get(`${dividedPos.X},${dividedPos.Y},${dividedPos.Z}`);
                         if (clickedOnBlock) {
-                            return [clickedOnBlock, dividedPos,true];
+                            return [clickedOnBlock, dividedPos, true];
                         } else {
                             print("Clicked on block doesn't exist. Maybe exploits?");
                         }
@@ -118,7 +118,7 @@ function interactCheck(player: Player, block: Part): [BlockStates|undefined, Vec
             }
         }
     }
-    return [undefined, new Vector3(0,0,0), false];
+    return [undefined, new Vector3(0, 0, 0), false];
 }
 
 evtInteract.Connect((player, blockUnknown, blockFace, chosenBlock) => {
@@ -126,7 +126,7 @@ evtInteract.Connect((player, blockUnknown, blockFace, chosenBlock) => {
     let block = blockUnknown as Part;
 
     let [clickedOnBlock, dividedPos, interactCheckResult] = interactCheck(player, block);
-    if(interactCheckResult && clickedOnBlock) {
+    if (interactCheckResult && clickedOnBlock) {
         if (clickedOnBlock.interactable) {
             print("Interacted block is interactable. Interacting instead of placing");
             clickedOnBlock.interact(player, face)
@@ -141,16 +141,16 @@ function deleteBlock(block: BlockStates) {
     blocks.delete(`${block.position.X},${block.position.Y},${block.position.Z}`);
 }
 
-evtDestroy.Connect((player, blockUnknown)=>{
+evtDestroy.Connect((player, blockUnknown) => {
     let block = blockUnknown as Part;
     let [clickedOnBlock, dividedPos, interactCheckResult] = interactCheck(player, block);
-    if(interactCheckResult && clickedOnBlock) {
-        if(!clickedOnBlock.unbreakable) {
+    if (interactCheckResult && clickedOnBlock) {
+        if (!clickedOnBlock.unbreakable) {
             deleteBlock(clickedOnBlock);
         }
-    }    
-})
+    }
+});
 
-fill(-20, 10, -20, 20, 10, 20, "grass");
-fill(-20, 1, -20, 20, 9, 20, "dirt");
-fill(-20, 0, -20, 20, 0, 20, "obsidian");
+
+const Blocks = {blocks, createBlock, deleteBlock, fill, placeBlockFromOtherBlock, createBlocksFromArray, getCorrectBlockState}
+export {Blocks, BlockData}

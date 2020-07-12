@@ -10,7 +10,8 @@ const globals = {
         brick: "rbxassetid://5295595753",
         stone: "rbxassetid://5295590108",
         obsidian: "rbxassetid://5295587145"
-    }
+    },
+    fixedTerrainDimensions: new Vector2(10, 10)
 }
 
 export default globals
