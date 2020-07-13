@@ -31,16 +31,26 @@ function generateChunk(cx: number, cy: number): Array<BlockData> {
             let blockData = new BlockData(new Vector3(x, ypos, z), "grass");
             returnArray.push(blockData);
             print(blockData.position.X, blockData.position.Y, blockData.position.Z)
-            for(let i=ypos-1; i<ypos-3; i++) {
+            let i = ypos - 1;
+            while(i > ypos - globals.dirtToStoneHeight) {
                 returnArray.push(new BlockData(new Vector3(x, i, z), "dirt"));
                 print("Placing dirt at", x, i, z);
+                i--;
             }
+            while(i > 0) {
+                returnArray.push(new BlockData(new Vector3(x, i, z), "stone"));
+                print("Placing stone at", x, i, z);
+                i--;
+            }
+            returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
             //for(let i=blockData.position.Y-10; i<2; i++) {
             //    returnArray.push(new BlockData(new Vector3(x, i, z), "stone"));
             //}
         }
+        wait()
     }
     //returnArray = fillEmpty(returnArray);
+    wait()
     return returnArray;
 }
 
