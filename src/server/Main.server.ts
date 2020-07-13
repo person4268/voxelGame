@@ -1,7 +1,8 @@
 import { Blocks } from "./Blocks"
-import { generateTerrain } from "./WorldGen/WorldGen";
+import { generateChunk } from "./WorldGen/WorldGen";
 
 Blocks.fill(new Vector3(-5, -12, -5), new Vector3(5, -12, 5), "obsidian");
-Blocks.createBlocksFromArray(generateTerrain());
+Blocks.createBlocksFromArray(generateChunk(0, 0));
+Blocks.createBlocksFromArray(generateChunk(0, 1));
 
 export {}

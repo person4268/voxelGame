@@ -11,9 +11,10 @@ const globals = {
         stone: "rbxassetid://5295590108",
         obsidian: "rbxassetid://5295587145"
     },
-    fixedTerrainDimensions: new Vector2(20, 20),
-    simplexNoiseDividend: 4, /* Experiment with this */
-    simplexNoiseScale: 1 /* How "dramatic" the results are */
+    chunkSize: new Vector2(40, 40),
+    simplexNoiseDividend: 36, /* Experiment with this */
+    simplexNoiseScale: 1.75, /* How "dramatic" the results are */
+    primaryGenerationHeight: 40
 }
 
 export default globals
