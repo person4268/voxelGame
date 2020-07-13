@@ -31,7 +31,7 @@ function randomRotate(block: BlockState, rotateOnX: boolean, rotateOnY: boolean,
 function applyTexture(block: BlockState) {
     switch (block.id) {
         case "grass":
-            randomRotate(block, false, true, false);
+            //randomRotate(block, false, true, false);
             Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt);
         break;
         case "dirt":

@@ -1,5 +1,5 @@
 import { BlockData } from "../Blocks"
-import {Simplex} from "./Simplex"
+import {SimplexNoise} from "./JsSimplex"
 import globals from "shared/globals"
 
 function map(x: number, in_min: number, in_max: number, out_min: number, out_max: number): number {
@@ -7,13 +7,13 @@ function map(x: number, in_min: number, in_max: number, out_min: number, out_max
 }
 
 function generateTerrain(): Array<BlockData> {
+    let simplex = new SimplexNoise();
     let returnArray: Array<BlockData> = [];
     for(let x = 0; x < globals.fixedTerrainDimensions.X; x++) {
         for(let y = 0; y < globals.fixedTerrainDimensions.Y; y++) {
-            returnArray.push(new BlockData(new Vector3(x, math.floor(Simplex.noise2D(x+0.1,y+0.1)*3), y), "grass"))
-            //            returnArray.push(new BlockData(new Vector3(x, math.floor(noise2D(x+0.1,y+0.1)*3), y), "grass"))
+            returnArray.push(new BlockData(new Vector3(x, math.floor(simplex.noise(x/globals.simplexNoiseDividend,y/globals.simplexNoiseDividend)*globals.simplexNoiseScale), y), "grass"))
+            coroutine.yield();
         }
-        
     }
     return returnArray;
 }
