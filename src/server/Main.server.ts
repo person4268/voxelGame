@@ -23,7 +23,7 @@ function createChunk(cx: number, cy: number) {
             Blocks.fill(new Vector3(globals.chunkSize.X * cx, 0, globals.chunkSize.Y * cy), new Vector3((globals.chunkSize.X * cx) + globals.chunkSize.X, 0, (globals.chunkSize.Y * cy) + globals.chunkSize.Y), "obsidian");
             break;
         default:
-        }
+    }
     wait()
 }
 
@@ -31,10 +31,14 @@ game.GetService("Players").CharacterAutoLoads = false;
 
 
 let firstJoiningPlayer: Player;
+let alreadySetFirstPlayer = false;
 game.GetService("Players").PlayerAdded.Connect((player) => {
-    firstJoiningPlayer = player;
-    print("First player is", player.Name);
-    OpenGui.SendToPlayer(player, "WGS");
+    if (!alreadySetFirstPlayer) {
+        firstJoiningPlayer = player;
+        print("First player is", player.Name);
+        OpenGui.SendToPlayer(player, "WGS");
+        alreadySetFirstPlayer = true;
+    }
 });
 
 WGSelection.Connect((plr: Player, Generator) => {
