@@ -23,7 +23,7 @@ function fillEmpty(input: Array<BlockData>): Array<BlockData> {
 }
 
 
-function generateChunk(cx: number, cy: number): Array<BlockData> {
+function SimplexGenerateChunk(cx: number, cy: number): Array<BlockData> {
     let returnArray: Array<BlockData> = [];
     for (let x = 0 + (globals.chunkSize.X * cx); x < globals.chunkSize.X + (globals.chunkSize.X * cx); x++) {
         for (let z = 0 + (globals.chunkSize.Y * cy); z < globals.chunkSize.Y + (globals.chunkSize.Y * cy); z++) {
@@ -34,24 +34,21 @@ function generateChunk(cx: number, cy: number): Array<BlockData> {
             let i = ypos - 1;
             while(i > ypos - globals.dirtToStoneHeight) {
                 returnArray.push(new BlockData(new Vector3(x, i, z), "dirt"));
-                print("Placing dirt at", x, i, z);
+                //print("Placing dirt at", x, i, z);
                 i--;
             }
             while(i > 0) {
                 returnArray.push(new BlockData(new Vector3(x, i, z), "stone"));
-                print("Placing stone at", x, i, z);
+                //print("Placing stone at", x, i, z);
                 i--;
             }
             returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
-            //for(let i=blockData.position.Y-10; i<2; i++) {
-            //    returnArray.push(new BlockData(new Vector3(x, i, z), "stone"));
-            //}
+
         }
         wait()
     }
-    //returnArray = fillEmpty(returnArray);
     wait()
     return returnArray;
 }
 
-export { generateChunk }
+export { SimplexGenerateChunk }
