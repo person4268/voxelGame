@@ -2,7 +2,8 @@ import { Gui, createScreenGui } from "./GuiLib";
 import Net from "@rbxts/net";
 function WGSCreate(plrGui: PlayerGui): Gui {
 
-
+    // really need to setup a better way to make guis
+    // they dont even scale well
     let gui = new Gui(createScreenGui(plrGui));
     gui.createWindow(new UDim2(0, 100, 0, 90), "Select WorldGen", true, false);
 

@@ -45,7 +45,7 @@ function SimplexGenerateChunk(cx: number, cy: number): Array<BlockData> {
             returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
 
         }
-        wait()
+        //wait()
     }
     wait()
     return returnArray;

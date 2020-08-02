@@ -20,7 +20,7 @@ function FlatIslandGenerateChunk(cx: number, cy: number) {
             returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
         }
     }
-    wait();
+    //wait();
     return returnArray;
 }
 

@@ -47,7 +47,7 @@ WGSelection.Connect((plr: Player, Generator) => {
         print("[Info]: User chose " + generator + "generator.");
         startGeneration();
     } else {
-        print("[Warn]: Player that is not first player has selected a WorldGen. Ignoring");
+        warn("[Warn]: Player that is not first player has selected a WorldGen. Ignoring");
     }
 });
 
