@@ -31,7 +31,7 @@ class Gui {
      * @param centered If Window will Spawn Centered
      * @param position Window's position, if not Centered
      */
-    createWindow(size = new UDim2(0, 237, 0, 295), title: string = "", isDraggable = true, closeButton = true, textSize = 14, centered: boolean = true, position?: UDim2): void {
+    createWindow(size = new UDim2(0, 237, 0, 295), title: string = "", isDraggable = true, closeButton = true, textSize = 14, centered: boolean = true, position?: UDim2, createTitleBar = true, activeGui = false): void {
         this.guiContainer = new Instance("Frame");
         if (this.gui) {
             this.guiContainer.Parent = this.gui;
@@ -40,7 +40,7 @@ class Gui {
         }
         if (centered) {
             if (position) error("Cannot specify position if centered");
-            this.guiContainer.Position = new UDim2(0.5 - size.X.Scale/2, -size.X.Offset / 2, 0.5 - size.Y.Scale/2, -size.Y.Offset / 2);
+            this.guiContainer.Position = new UDim2(0.5 - size.X.Scale / 2, -size.X.Offset / 2, 0.5 - size.Y.Scale / 2, -size.Y.Offset / 2);
         } else {
             if (position) {
                 this.guiContainer.Position = position;
@@ -55,7 +55,11 @@ class Gui {
         this.guiContainer.BorderSizePixel = 4;
         this.guiContainer.Name = "Container";
 
-        if (this.guiContainer) {
+        if (activeGui) {
+            this.guiContainer.Active = true;
+        }
+
+        if (createTitleBar) {
             this.titleBar = new Instance("Frame");
             this.titleBar.BackgroundTransparency = 1;
             this.titleBar.Size = new UDim2(1, 0, 0.07, 0);
@@ -164,12 +168,12 @@ class Gui {
         newButton.TextColor3 = Color3.fromRGB(255, 255, 255);
         newButton.BackgroundTransparency = 0.1;
 
-        if(Name) newButton.Name = Name;
-        if(Size) newButton.Size = Size;
-        if(!Size) newButton.Size = new UDim2(0.2, 0, 0.08, 0);
-        if(Position) newButton.Position = Position;
-        if(AnchorPoint) newButton.AnchorPoint = AnchorPoint;
-        if(ButtonText) newButton.Text = ButtonText;
+        if (Name) newButton.Name = Name;
+        if (Size) newButton.Size = Size;
+        if (!Size) newButton.Size = new UDim2(0.2, 0, 0.08, 0);
+        if (Position) newButton.Position = Position;
+        if (AnchorPoint) newButton.AnchorPoint = AnchorPoint;
+        if (ButtonText) newButton.Text = ButtonText;
 
         newButton.Parent = Parent;
 

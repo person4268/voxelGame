@@ -1,6 +1,6 @@
 import { Gui, createScreenGui } from "./GuiLib";
 import Net from "@rbxts/net";
-function WGSCreate(plrGui: PlayerGui): Gui {
+function WorldGeneratorSelector(plrGui: PlayerGui): Gui {
 
     // really need to setup a better way to make guis
     // they dont even scale well
@@ -40,4 +40,4 @@ function WGSCreate(plrGui: PlayerGui): Gui {
 }
 
 
-export { WGSCreate };
+export default WorldGeneratorSelector;
