@@ -5,7 +5,7 @@
 	For instructions on how to use this module, go to this link:
 	https://devforum.roblox.com/t/simple-module-for-creating-draggable-gui-elements/230678
 
-    Ported by person4268
+    Ported by person4268 to roblox-ts
 */
 
 let UserInputService = game.GetService("UserInputService");
