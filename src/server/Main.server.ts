@@ -14,10 +14,10 @@ let generator: string = "";
 function createChunk(cx: number, cy: number) {
     switch (generator) {
         case "Simplex":
-            Blocks.createBlocksFromArray(SimplexGenerateChunk(cx, cy));
+            SimplexGenerateChunk(cx, cy);
             break;
         case "FlatIsland":
-            Blocks.createBlocksFromArray(FlatIslandGenerateChunk(cx, cy));
+            FlatIslandGenerateChunk(cx, cy);
             break;
         case "Plane":
             Blocks.fill(new Vector3(globals.chunkSize.X * cx, 0, globals.chunkSize.Y * cy), new Vector3((globals.chunkSize.X * cx) + globals.chunkSize.X, 0, (globals.chunkSize.Y * cy) + globals.chunkSize.Y), "obsidian");
@@ -73,6 +73,11 @@ function startGeneration() {
 }
 
 function onGenerationEnd() {
+    let c = 0;
+    Blocks.blocks.forEach(()=>{
+        c++;
+    });
+    print(c, "blocks created");
     game.GetService("Players").CharacterAutoLoads = true;
     game.GetService("Players").GetChildren().forEach((player) => {
         (player as Player).LoadCharacter();

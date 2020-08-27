@@ -52,18 +52,19 @@ function createBlocksFromArray(blocks: Array<BlockData>): void {
 }
 
 function fill(startPos: Vector3, endPos: Vector3, block: blockIds, blockData?: Object) {
-    let blockArray: Array<BlockData> = [];
+    //let blockArray: Array<BlockData> = [];
     for (let x = startPos.X; x <= endPos.X; x++) {
         for (let y = startPos.Y; y <= endPos.Y; y++) {
             for (let z = startPos.Z; z <= endPos.Z; z++) {
-                blockArray.push(new BlockData(new Vector3(x, y, z), block, blockData));
+                //blockArray.push(new BlockData(new Vector3(x, y, z), block, blockData));
+                createBlock(new Vector3(x, y, z), block, blockData);
                 if (startPos.Z - endPos.Z === 0) break;
             }
             if (startPos.Y - endPos.Y === 0) break;
         }
         if (startPos.X - endPos.X === 0) break;
     }
-    createBlocksFromArray(blockArray);
+    //createBlocksFromArray(blockArray);
 }
 
 function placeBlockFromOtherBlock(player: Player, blockPosition: Vector3, face: Enum.NormalId, chosenBlock: any) {
