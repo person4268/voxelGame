@@ -35,6 +35,7 @@ class Gui {
         this.guiContainer = new Instance("Frame");
         if (this.gui) {
             this.guiContainer.Parent = this.gui;
+            this.gui.Name = title;
         } else {
             error("GUI not found");
         }
@@ -112,8 +113,8 @@ class Gui {
 
             this.mainContainer = new Instance("Frame");
             this.mainContainer.BackgroundTransparency = 1;
-            this.mainContainer.Size = new UDim2(2, 0, 1 - this.titleBarBorder.Size.Y.Scale, -this.titleBarBorder.Size.Y.Offset).sub(this.titleBar.Size);
-            this.mainContainer.Position = new UDim2(0, 0, this.titleBar.Size.Y.Scale + this.titleBarBorder.Size.Y.Scale, this.titleBar.Size.Y.Offset + this.titleBarBorder.Size.Y.Offset + 1);
+            this.mainContainer.Size = new UDim2(2, -3, 1 - this.titleBarBorder.Size.Y.Scale, -this.titleBarBorder.Size.Y.Offset).sub(this.titleBar.Size);
+            this.mainContainer.Position = new UDim2(0, 3, this.titleBar.Size.Y.Scale + this.titleBarBorder.Size.Y.Scale, this.titleBar.Size.Y.Offset + this.titleBarBorder.Size.Y.Offset + 5);
             this.mainContainer.Name = "MainContainer";
             this.mainContainer.Parent = this.guiContainer;
         }
@@ -178,6 +179,23 @@ class Gui {
         newButton.Parent = Parent;
 
         return newButton;
+    }
+    createGuiLabel(Parent: Instance, Name?: string, Size?: UDim2, Position?: UDim2, AnchorPoint?: Vector2, LabelText?: string): TextLabel {
+        let newLabel = new Instance("TextLabel");
+        newLabel.BackgroundTransparency = 1;
+        newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
+        newLabel.BorderSizePixel = 0;
+
+        if (Name) newLabel.Name = Name;
+        if (Size) newLabel.Size = Size;
+        if (!Size) newLabel.Size = new UDim2(0.2, 0, 0.08, 0);
+        if (Position) newLabel.Position = Position;
+        if (AnchorPoint) newLabel.AnchorPoint = AnchorPoint;
+        if (LabelText) newLabel.Text = LabelText;
+
+        newLabel.Parent = Parent;
+        return newLabel;
+
     }
 }
 
