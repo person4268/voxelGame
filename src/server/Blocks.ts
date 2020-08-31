@@ -21,7 +21,7 @@ class BlockData {
 type BlockStates = BlockState | BedrockBlockState; // | BlockState2 | BlockState3
 
 /* In format of x,y,z */
-let blocks: Map<Vector3, BlockStates> = new Map();
+let blocks: Map<String, BlockStates> = new Map();
 
 /**
  * Gets the correct block state for specified id because a block might want to have its own blockstate
@@ -42,7 +42,7 @@ function createBlock(position: Vector3, id: blockIds, blockData?: Object): void 
     newBlockState.id = id;
     newBlockState.blockData = blockData;
     newBlockState.createBlock();
-    blocks.set(position, newBlockState);
+    blocks.set(`${position.X},${position.Y},${position.Z}`, newBlockState);
 }
 
 function createBlocksFromArray(blocks: Array<BlockData>): void {
@@ -93,7 +93,7 @@ function placeBlockFromOtherBlock(player: Player, blockPosition: Vector3, face: 
             error("Invalid Enum in placeBlockFromOtherBlock!!!!!!!")
     }
     print("New block position is " + newBlockPos.X + "," + newBlockPos.Y + "," + newBlockPos.Z);
-    if (!blocks.get(newBlockPos)) { /* If this block did exist then user is either an exploiter or used bug to place on side with block or nonconventional hitbox */
+    if (!blocks.get(`${newBlockPos.X},${newBlockPos.Y},${newBlockPos.Z}`)) { /* If this block did exist then user is either an exploiter or used bug to place on side with block or nonconventional hitbox */
         print("Creating block as " + block);
         createBlock(newBlockPos, block);
     }
@@ -114,7 +114,7 @@ function interactCheck(player: Player, block: Part): [BlockStates | undefined, b
                     if (isBlockReachable(block.Position, head.Position)) {
                         /* After all that type checking nonsense we can actually do things */
                         let dividedPos = block.Position.div(globals.blockSize);
-                        let clickedOnBlock = blocks.get(dividedPos);
+                        let clickedOnBlock = blocks.get(`${dividedPos.X},${dividedPos.Y},${dividedPos.Z}`);
                         if (clickedOnBlock) {
                             return [clickedOnBlock, true];
                         } else {
@@ -144,11 +144,11 @@ evtInteract.Connect((player, blockUnknown, blockFace, chosenBlock) => {
 });
 
 function deleteBlock(block: BlockStates) {
-    if(!blocks.get(block.position)) {
+    if(blocks.get(`${block.position.X},${block.position.Y},${block.position.Z}`) === undefined) {
         warn("Deleting a block that doesn't exist in blocks list. There's an issue here. Proceeding anyways.");
     }
     block.destroyBlock();
-    blocks.delete(block.position);
+    blocks.delete(`${block.position.X},${block.position.Y},${block.position.Z}`);
 }
 
 evtDestroy.Connect((player, blockUnknown) => {
