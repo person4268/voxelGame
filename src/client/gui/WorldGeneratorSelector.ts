@@ -4,8 +4,7 @@ function WorldGeneratorSelector(plrGui: PlayerGui): Gui {
 
     // really need to setup a better way to make guis
     // they dont even scale well
-    let gui = new Gui(createScreenGui(plrGui));
-    gui.createWindow(new UDim2(0, 105, 0, 95), "Select WorldGen", true, false);
+    let gui = new Gui(createScreenGui(plrGui), new UDim2(0, 105, 0, 95), "Select WorldGen", true, false);
 
     let selectPlane = gui.createGuiButton(gui.mainContainer, "SelectPlane", new UDim2(0, 90, 0, 16), new UDim2(0, 5, 0, 10), undefined, "Plane");
     let selectFlatIsland = gui.createGuiButton(gui.mainContainer, "SelectFlatIsland", new UDim2(0, 90, 0, 16), new UDim2(0, 5, 0, 20).add(new UDim2(0, 0, selectPlane.Size.Y.Scale, selectPlane.Size.Y.Offset)), undefined, "FlatIsland");

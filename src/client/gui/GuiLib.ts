@@ -17,21 +17,12 @@ class Gui {
     mainContainer: Frame;
 
     dragger?: DraggableObject;
-    constructor(parentGui: SurfaceGui | ScreenGui | BillboardGui) {
+    constructor(parentGui: SurfaceGui | ScreenGui | BillboardGui, size = new UDim2(0, 237, 0, 295), title: string = "", isDraggable = true, closeButton = true, textSize = 14, centered: boolean = true, position?: UDim2, createTitleBar = true, activeGui = false) {
         this.gui = parentGui;
         this.mainContainer = new Instance("Frame");
-    }
-    /**
-     * Creates a Window
-     * @param size Window Size
-     * @param title Window Title
-     * @param isDraggable If Window is Draggable
-     * @param closeButton If Window has Close Button 
-     * @param textSize Text Size of Title
-     * @param centered If Window will Spawn Centered
-     * @param position Window's position, if not Centered
-     */
-    createWindow(size = new UDim2(0, 237, 0, 295), title: string = "", isDraggable = true, closeButton = true, textSize = 14, centered: boolean = true, position?: UDim2, createTitleBar = true, activeGui = false): void {
+
+
+
         this.guiContainer = new Instance("Frame");
         if (this.gui) {
             this.guiContainer.Parent = this.gui;
@@ -118,6 +109,19 @@ class Gui {
             this.mainContainer.Name = "MainContainer";
             this.mainContainer.Parent = this.guiContainer;
         }
+
+    }
+    /**
+     * Creates a Window
+     * @param size Window Size
+     * @param title Window Title
+     * @param isDraggable If Window is Draggable
+     * @param closeButton If Window has Close Button 
+     * @param textSize Text Size of Title
+     * @param centered If Window will Spawn Centered
+     * @param position Window's position, if not Centered
+     */
+    createWindow(): void {
 
     }
     /**

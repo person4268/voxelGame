@@ -8,5 +8,11 @@ function addUDim2(udims: Array<UDim2>, addX = true, addY = true): UDim2 {
     return udimCounter;
 }
 
-export { addUDim2 }
+class UITable { 
+    constructor(columns: Array<String>, allowSorting = true) {
+
+    }
+}
+
+export { addUDim2, UITable }
 
