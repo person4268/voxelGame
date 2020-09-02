@@ -104,7 +104,7 @@ class Gui {
 
             this.mainContainer = new Instance("Frame");
             this.mainContainer.BackgroundTransparency = 1;
-            this.mainContainer.Size = new UDim2(2, -3, 1 - this.titleBarBorder.Size.Y.Scale, -this.titleBarBorder.Size.Y.Offset).sub(this.titleBar.Size);
+            this.mainContainer.Size = new UDim2(2, -3, 1 - this.titleBarBorder.Size.Y.Scale - 0.01, -this.titleBarBorder.Size.Y.Offset).sub(this.titleBar.Size);
             this.mainContainer.Position = new UDim2(0, 3, this.titleBar.Size.Y.Scale + this.titleBarBorder.Size.Y.Scale, this.titleBar.Size.Y.Offset + this.titleBarBorder.Size.Y.Offset + 5);
             this.mainContainer.Name = "MainContainer";
             this.mainContainer.Parent = this.guiContainer;
@@ -171,7 +171,7 @@ class Gui {
         //color 60,60,60 transparency ~0.06
         newButton.BackgroundColor3 = Color3.fromRGB(21, 21, 21);
         newButton.TextColor3 = Color3.fromRGB(255, 255, 255);
-        newButton.BackgroundTransparency = 0.1;
+        newButton.BackgroundTransparency = 0.17;
 
         if (Name) newButton.Name = Name;
         if (Size) newButton.Size = Size;
