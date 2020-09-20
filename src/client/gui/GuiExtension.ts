@@ -64,62 +64,36 @@ function createBorder(parent: GuiObject, borderWidth = 1, borderColor = Color3.f
 
 class UITable {
 
-    columns: Array<String>
-    columnCount: Number
-    allowSorting: Boolean
+    columns: Array<string>
+    columnCount: number
+    allowSorting: boolean
     gui: Gui
     tableFrame: Frame;
     columnBar: Frame;
     parent: GuiObject
     tableData: Map<string, Array<string>>;
     mainFrame: Frame;
-    columnFrames: Map<number, { "name": string, "frame": Frame, width: number }> = new Map();
-    getPositionFromIndex(index: number): number {
+    columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
+    getPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
-        if (this.columnFrames) {
-            let res = this.columnFrames.get(index - 1);
-            if (res) {
-                print(res.frame.Position.X.Offset + res.width)
-                return res.frame.Position.X.Offset + res.width;
-            }
-        }
-        return 0;
+        return 1 / totalCount * index;
     }
-    createColumnTab(name: string, index: number, createDragger = true) {
-        let data: { "name": string, "frame": Frame, width: number } = { "name": name, "frame": new Instance("Frame"), "width": 10 };
-        let containerFrame = this.gui.createInvisibleFrame(this.mainFrame, name, new UDim2(0, data.width, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset), new UDim2(0, this.getPositionFromIndex(index), this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset));
+    createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
+        let data = { "name": name, "frame": new Instance("Frame") };
+        let containerFrame = this.gui.createInvisibleFrame(this.mainFrame, name, new UDim2(1 / totalCount, -2, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset), new UDim2(this.getPositionFromIndex(index, totalCount), 2, this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset));
         data.frame = containerFrame;
 
-        let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(0, data.width, 1, 0), new UDim2(0, this.getPositionFromIndex(index), 0, 0), undefined, name);
+        let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getPositionFromIndex(index, totalCount), 2, 0, 0), undefined, name);
         titleText.TextXAlignment = Enum.TextXAlignment.Left;
         titleText.TextWrapped = true; /* Because of the lack of vertical space in the textlabel, this effectively crops it off */
+
         if (createDragger) {
-            let titleDragger = this.gui.createInvisibleFrame(titleText, "Dragger", new UDim2(0, 5, 1, 0), new UDim2(1, 0, 0, 0), undefined);
-            titleDragger.BackgroundTransparency = 0;
+            let titleDragger = this.gui.createInvisibleFrame(titleText, "Dragger", new UDim2(0, 1, 1, 0), new UDim2(1, -4, 0, 0), undefined);
+            titleDragger.BackgroundTransparency = 0.1;
 
-            let border = this.gui.createInvisibleFrame(containerFrame, "Border", new UDim2(0, 1, 1, 0), new UDim2(1, 0, 0, 0), undefined);
+            let border = this.gui.createInvisibleFrame(containerFrame, "Border", new UDim2(0, 1, 1, 0), new UDim2(1, -4, 0, 0), undefined);
             border.BackgroundTransparency = 0.9;
-
-            let titleDraggerObj = new DraggableObject(titleDragger, titleText, true, false, true);
-            titleDraggerObj.Enable();
-
-            titleDraggerObj.Dragged = (newSize: UDim2) => {
-                if (newSize.X.Offset < 0) {
-                    newSize = new UDim2(newSize.X.Scale, 0, 1, 0);
-                    titleText.Size = newSize;
-                }
-                if (newSize.X.Offset > this.mainFrame.AbsoluteSize.X - titleDragger.AbsoluteSize.X) {
-                    newSize = new UDim2(newSize.X.Scale, this.mainFrame.AbsoluteSize.X - titleDragger.AbsoluteSize.X, 1, 0);
-                    titleText.Size = newSize;
-                }
-                containerFrame.Size = new UDim2(newSize.X.Scale, newSize.X.Offset, containerFrame.Size.Y.Scale, containerFrame.Size.Y.Offset);
-            }
-
         }
-        if (this.columnFrames) {
-            this.columnFrames.set(index, data);
-        }
-
     }
 
     constructor(gui: Gui, parent: GuiObject, columns: Array<string>, allowSorting = true, size: UDim2, position: UDim2, initialData?: Map<string, Array<string>>) {
@@ -137,9 +111,15 @@ class UITable {
         this.columnBar.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
         this.columnBar.BackgroundTransparency = 0.35;
 
-        this.createColumnTab(columns[0], 0);
-        this.createColumnTab(columns[1], 1);
-        this.createColumnTab(columns[2], 2);
+        let i = 0;
+        this.columns.forEach((column) => {
+            if (i !== this.columnCount-1) {
+                this.createColumnTab(column, i, this.columnCount);
+            } else {
+                this.createColumnTab(column, i, this.columnCount, false);
+            }
+            i++;
+        });
 
     }
 }
