@@ -66,7 +66,6 @@ class UITable {
 
     columns: Array<string>
     columnCount: number
-    allowSorting: boolean
     gui: Gui
     tableFrame: Frame;
     columnBar: Frame;
@@ -96,10 +95,9 @@ class UITable {
         }
     }
 
-    constructor(gui: Gui, parent: GuiObject, columns: Array<string>, allowSorting = true, size: UDim2, position: UDim2, initialData?: Map<string, Array<string>>) {
+    constructor(gui: Gui, parent: GuiObject, columns: Array<string>, size: UDim2, position: UDim2) {
         this.columns = columns;
         this.columnCount = columns.size();
-        this.allowSorting = allowSorting;
         this.gui = gui;
         this.parent = parent;
         this.tableData = new Map(); /* Placeholder, REMOVE WHEN DONE */
