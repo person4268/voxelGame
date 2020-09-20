@@ -21,10 +21,15 @@ class DraggableObject {
     Dragged?: (newPos: UDim2) => void;
     ActuallyDragThis?: GuiObject;
     Dragging: boolean = false;
-
-    constructor(Object: GuiObject, ActuallyDragThis?: GuiObject) {
+    dragInX: boolean;
+    dragInY: boolean;
+    resizeInstead: boolean;
+    constructor(Object: GuiObject, ActuallyDragThis?: GuiObject, dragInX = true, dragInY = true, resizeInstead = false) {
         this.Object = Object;
         this.ActuallyDragThis = ActuallyDragThis;
+        this.dragInX = dragInX;
+        this.dragInY = dragInY;
+        this.resizeInstead = resizeInstead;
     }
 
     /**
@@ -37,17 +42,34 @@ class DraggableObject {
         let dragStart: Vector3;
         let startPos: UDim2;
         let preparingToDrag = false;
+        let dragInX = this.dragInX;
+        let dragInY = this.dragInY
+        let resizeInstead = this.resizeInstead;
 
         function update(input: InputObject) {
             let delta = input.Position.sub(dragStart);
             let newPosition = new UDim2(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            let dragThisThing;
             if (ActuallyDragThis) {
-                //newPosition = newPosition.add(new UDim2(0, ActuallyDragThis.AbsoluteSize.X, 0, 0));
-                ActuallyDragThis.Position = newPosition
+                dragThisThing = ActuallyDragThis;
             } else {
-                object.Position = newPosition;
+                dragThisThing = object;
             }
-
+            if (!resizeInstead) {
+                if (dragInX && dragInY) {
+                    dragThisThing.Position = newPosition;
+                } else {
+                    if (dragInX) dragThisThing.Position = new UDim2(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Position.Y.Scale, dragThisThing.Position.Y.Offset);
+                    if (dragInY) dragThisThing.Position = new UDim2(dragThisThing.Position.X.Scale, dragThisThing.Position.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
+                }
+            } else {
+                if (dragInX && dragInY) {
+                    dragThisThing.Size = newPosition;
+                } else {
+                    if (dragInX) dragThisThing.Size = new UDim2(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Size.Y.Scale, dragThisThing.Size.Y.Offset);
+                    if (dragInY) dragThisThing.Size = new UDim2(dragThisThing.Size.X.Scale, dragThisThing.Size.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
+                }
+            }
             return newPosition;
         }
 
@@ -91,10 +113,18 @@ class DraggableObject {
 
                 this.Dragging = true
                 dragStart = input.Position
-                if(ActuallyDragThis) {
-                    startPos = ActuallyDragThis.Position;
+                if (!resizeInstead) {
+                    if (ActuallyDragThis) {
+                        startPos = ActuallyDragThis.Position;
+                    } else {
+                        startPos = object.Position;
+                    }
                 } else {
-                    startPos = object.Position;
+                    if (ActuallyDragThis) {
+                        startPos = ActuallyDragThis.Size;
+                    } else {
+                        startPos = object.Size;
+                    }
                 }
             }
 
@@ -110,9 +140,9 @@ class DraggableObject {
 
     }
     Disable() {
-        if(this.InputBegan) this.InputBegan.Disconnect()
-        if(this.InputChanged) this.InputChanged.Disconnect()
-        if(this.InputChanged2) this.InputChanged2.Disconnect()
+        if (this.InputBegan) this.InputBegan.Disconnect()
+        if (this.InputChanged) this.InputChanged.Disconnect()
+        if (this.InputChanged2) this.InputChanged2.Disconnect()
 
         if (this.Dragging) {
             this.Dragging = false

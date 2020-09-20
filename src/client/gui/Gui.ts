@@ -31,5 +31,11 @@ Net.WaitForClientEventAsync("CloseGui").then((event) => {
     });
 });
 
+function openGui(gui_: string) { /* variable name conflict */
+    if(gui_) gui[gui_].open()
+}
+function closeGui(gui_: string) { /* variable name conflict */
+    if(gui_) gui[gui_].close()
+}
 
-export { initalizeAllGuis }
+export { initalizeAllGuis, openGui, closeGui }
