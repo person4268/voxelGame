@@ -16,7 +16,7 @@ function DebugGui(plrGui: PlayerGui) {
     });
 
     let uiTable = new UITable(gui, gui.mainContainer,["test1", "test2", "test3"], new UDim2(0.5, 0, 0.5, 0), new UDim2(0.1, 0, 0.4, 0));
-
+    print(uiTable.columnNameToIndex("test1"));
     return gui;
 }
 

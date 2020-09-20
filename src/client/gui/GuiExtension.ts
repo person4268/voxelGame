@@ -93,8 +93,15 @@ class UITable {
             let border = this.gui.createInvisibleFrame(containerFrame, "Border", new UDim2(0, 1, 1, 0), new UDim2(1, -4, 0, 0), undefined);
             border.BackgroundTransparency = 0.9;
         }
+        this.columnFrames.set(index, data);
+    }
+    columnNameToIndex(name: string): number {
+        let i = 0;
+        for(; (this.columnFrames.get(i) as { "name": string, "frame": Frame }).name !== name; i++) {}
+        return i;
     }
 
+    
     constructor(gui: Gui, parent: GuiObject, columns: Array<string>, size: UDim2, position: UDim2) {
         this.columns = columns;
         this.columnCount = columns.size();
@@ -111,7 +118,7 @@ class UITable {
 
         let i = 0;
         this.columns.forEach((column) => {
-            if (i !== this.columnCount-1) {
+            if (i !== this.columnCount - 1) {
                 this.createColumnTab(column, i, this.columnCount);
             } else {
                 this.createColumnTab(column, i, this.columnCount, false);
