@@ -1,6 +1,13 @@
 # VoxelGame
 
-First, install all dependencies with `npm install`(i think). If that doesn't work, `npm install @rbxts/types @rbxts/net`. Then start the builder with `rbxtsc -w` and use the Rojo VS code plugin to copy everything into Roblox Studio.
+An attempt at creating a Minecraft clone game in Roblox using roblox-ts. Currently features terrian generation and an incomplete GUI system.
+
+## Compiling
+1. `npm install -g roblox-ts`
+2. Install rojo from `https://github.com/LPGhatguy/rojo/releases`
+3. `npm install`
+4. `rbxtsc` or `rbxtsc -w`
+5. `rojo build --output game.rbxlx` or `rojo build --output game.rbxl` or `rojo plugin install` and `rojo serve`
 
 ## Credits
 Textures:
