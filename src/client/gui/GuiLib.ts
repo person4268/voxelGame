@@ -184,7 +184,7 @@ class Gui {
 
         return newButton;
     }
-    createGuiLabel(Parent: Instance, Name?: string, Size?: UDim2, Position?: UDim2, AnchorPoint?: Vector2, LabelText?: string): TextLabel {
+    createGuiLabel(Parent: Instance, Name?: string, Size?: UDim2, Position?: UDim2, AnchorPoint?: Vector2, LabelText?: string, alignLeft = false): TextLabel {
         let newLabel = new Instance("TextLabel");
         newLabel.BackgroundTransparency = 1;
         newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
@@ -196,7 +196,7 @@ class Gui {
         if (Position) newLabel.Position = Position;
         if (AnchorPoint) newLabel.AnchorPoint = AnchorPoint;
         if (LabelText) newLabel.Text = LabelText;
-
+        if (alignLeft) newLabel.TextXAlignment = Enum.TextXAlignment.Left
         newLabel.Parent = Parent;
         return newLabel;
 

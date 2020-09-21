@@ -70,15 +70,16 @@ class UITable {
     tableFrame: Frame;
     columnBar: Frame;
     parent: GuiObject
-    tableData: Map<number, Array<{"value": string, "textLabel": TextLabel}>>;
+    tableData: Map<number, Array<{ "value": string, "textLabel": TextLabel }>>;
     mainFrame: Frame;
     columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
+    scrollingFrame: ScrollingFrame;
     getColPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
         return 1 / totalCount * index;
     }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
-        let containerFrame = this.gui.createInvisibleFrame(this.mainFrame, name, new UDim2(1 / totalCount, -2, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset));
+        let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0));
         let data = { "name": name, "frame": containerFrame };
 
         let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0), undefined, name);
@@ -96,11 +97,11 @@ class UITable {
     }
     columnNameToIndex(name: string): number {
         let i = 0;
-        for(; (this.columnFrames.get(i) as { "name": string, "frame": Frame }).name !== name; i++) {}
+        for (; (this.columnFrames.get(i) as { "name": string, "frame": Frame }).name !== name; i++) { }
         return i;
     }
 
-    
+
     constructor(gui: Gui, parent: GuiObject, columns: Array<string>, size: UDim2, position: UDim2) {
         this.columns = columns;
         this.columnCount = columns.size();
@@ -113,7 +114,14 @@ class UITable {
 
         this.columnBar = this.gui.createInvisibleFrame(this.mainFrame, "TitleBar", new UDim2(1, 0, 0, 15), new UDim2(0, 0, 0, 1));
         this.columnBar.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
-        this.columnBar.BackgroundTransparency = 0.35;
+        this.columnBar.BackgroundTransparency = 0.4;
+
+        this.scrollingFrame = new Instance("ScrollingFrame");
+        this.scrollingFrame.Parent = this.mainFrame;
+        this.scrollingFrame.Size = new UDim2(1, 0, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset);
+        this.scrollingFrame.Position = new UDim2(0, 0, this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset);
+        this.scrollingFrame.BackgroundTransparency = 1;
+
 
         let i = 0;
         this.columns.forEach((column) => {
@@ -124,6 +132,9 @@ class UITable {
             }
             i++;
         });
+
+        //TEMP
+        this.gui.createGuiLabel((this.columnFrames.get(0) as { "name": string, "frame": Frame }).frame, undefined, undefined, undefined, undefined, "Hello!", true);
 
     }
 }
