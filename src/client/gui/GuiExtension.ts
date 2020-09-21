@@ -70,13 +70,27 @@ class UITable {
     tableFrame: Frame;
     columnBar: Frame;
     parent: GuiObject
-    tableData: Map<number, Array<{ "value": string, "textLabel": TextLabel }>>;
+    tableData: Map<number, Map<number, { "value": string, "textLabel": TextLabel }>>;
     mainFrame: Frame;
     columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
     scrollingFrame: ScrollingFrame;
     getColPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
         return 1 / totalCount * index;
+    }
+    getTextHeightFromIndex(col: number, index: number): number {
+        if (index === 0) return 0;
+        let data = this.tableData.get(col);
+        if(data) {
+            let lastEntryData = data.get(index);
+            if(lastEntryData) {
+                return (data.size()*lastEntryData.textLabel.AbsoluteSize.Y)+5
+            }
+            warn(`Last index nonexistent. Index ${index}, col ${col}`);
+            return 0;
+        }
+        warn(`Last index nonexistent. Index ${index}, col ${col}`);
+        return 0;
     }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
         let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0));
