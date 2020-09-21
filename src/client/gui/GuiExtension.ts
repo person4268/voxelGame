@@ -70,19 +70,18 @@ class UITable {
     tableFrame: Frame;
     columnBar: Frame;
     parent: GuiObject
-    tableData: Map<string, Array<string>>;
+    tableData: Map<number, Array<{"value": string, "textLabel": TextLabel}>>;
     mainFrame: Frame;
     columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
-    getPositionFromIndex(index: number, totalCount: number): number {
+    getColPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
         return 1 / totalCount * index;
     }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
-        let data = { "name": name, "frame": new Instance("Frame") };
-        let containerFrame = this.gui.createInvisibleFrame(this.mainFrame, name, new UDim2(1 / totalCount, -2, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset), new UDim2(this.getPositionFromIndex(index, totalCount), 2, this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset));
-        data.frame = containerFrame;
+        let containerFrame = this.gui.createInvisibleFrame(this.mainFrame, name, new UDim2(1 / totalCount, -2, 1 - this.columnBar.Size.Y.Scale, -this.columnBar.Size.Y.Offset), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, this.columnBar.Size.Y.Scale, this.columnBar.Size.Y.Offset));
+        let data = { "name": name, "frame": containerFrame };
 
-        let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getPositionFromIndex(index, totalCount), 2, 0, 0), undefined, name);
+        let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0), undefined, name);
         titleText.TextXAlignment = Enum.TextXAlignment.Left;
         titleText.TextWrapped = true; /* Because of the lack of vertical space in the textlabel, this effectively crops it off */
 
