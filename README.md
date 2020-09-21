@@ -2,7 +2,7 @@
 
 An attempt at creating a Minecraft clone game in Roblox using roblox-ts. Currently features terrian generation and an incomplete GUI system.
 
-# Compiling
+## Compiling
 1. `npm install -g roblox-ts`
 2. Install rojo from `https://github.com/LPGhatguy/rojo/releases`
 3. `npm install`
