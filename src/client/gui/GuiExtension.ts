@@ -151,7 +151,7 @@ class UITable {
         }
     }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
-        let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0));
+        let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 0, 0, 0));
         let data = { "name": name, "frame": containerFrame };
 
         let titleText = this.gui.createGuiLabel(this.columnBar, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0), undefined, name);
