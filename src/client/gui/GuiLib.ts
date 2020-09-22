@@ -201,6 +201,24 @@ class Gui {
         return newLabel;
 
     }
+
+    createGuiLabelBtn(Parent: Instance, Name?: string, Size?: UDim2, Position?: UDim2, AnchorPoint?: Vector2, LabelText?: string, alignLeft = false): TextButton {
+        let newLabel = new Instance("TextButton");
+        newLabel.BackgroundTransparency = 1;
+        newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
+        newLabel.BorderSizePixel = 0;
+
+        if (Name) newLabel.Name = Name;
+        if (Size) newLabel.Size = Size;
+        if (!Size) newLabel.Size = new UDim2(0.2, 0, 0.08, 0);
+        if (Position) newLabel.Position = Position;
+        if (AnchorPoint) newLabel.AnchorPoint = AnchorPoint;
+        if (LabelText) newLabel.Text = LabelText;
+        if (alignLeft) newLabel.TextXAlignment = Enum.TextXAlignment.Left
+        newLabel.Parent = Parent;
+        return newLabel;
+
+    }
 }
 
 

@@ -62,6 +62,7 @@ function createBorder(parent: GuiObject, borderWidth = 1, borderColor = Color3.f
     return { "borders": [borderTop, borderBottom, borderLeft, borderRight], "containingFrame": containing };
 }
 
+//WARNING: terrible code
 class UITable {
 
     columns: Array<string>
@@ -70,10 +71,12 @@ class UITable {
     tableFrame: Frame;
     columnBar: Frame;
     parent: GuiObject
-    tableData: Map<number, Map<number, { "value": string, "textLabel": TextLabel }>>;
+    tableData: Map<number, Map<number, { "value": string, "textLabel": TextButton }>>;
     mainFrame: Frame;
     columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
     scrollingFrame: ScrollingFrame;
+    rowsClickable: boolean;
+    onRowSelect?: (row: number) => {}
     getColPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
         return 1 / totalCount * index;
@@ -81,16 +84,71 @@ class UITable {
     getTextHeightFromIndex(col: number, index: number): number {
         if (index === 0) return 0;
         let data = this.tableData.get(col);
-        if(data) {
-            let lastEntryData = data.get(index);
-            if(lastEntryData) {
-                return (data.size()*lastEntryData.textLabel.AbsoluteSize.Y)+5
+        if (data) {
+            let lastEntryData = data.get(index - 1);
+            if (lastEntryData) {
+                return (data.size() * lastEntryData.textLabel.AbsoluteSize.Y)
             }
             warn(`Last index nonexistent. Index ${index}, col ${col}`);
             return 0;
         }
         warn(`Last index nonexistent. Index ${index}, col ${col}`);
         return 0;
+    }
+
+    selectedRow?: number
+    selectHandler(col: number, index: number) {
+        warn(`Clicked: ${col}, ${index}`);
+        if (this.rowsClickable) {
+            if (this.selectedRow !== undefined) {
+                for (let i = 0; i < this.columns.size(); i++) {
+                    let colData = this.tableData.get(i);
+                    if (colData) {
+                        let entryData = colData.get(this.selectedRow);
+                        if (entryData) {
+                            entryData.textLabel.BackgroundTransparency = 1;
+                        }
+                    }
+                }
+            }
+            for (let i = 0; i < this.columns.size(); i++) {
+                let colData = this.tableData.get(i);
+                if (colData) {
+                    let entryData = colData.get(index);
+                    if (entryData) {
+                        entryData.textLabel.BackgroundTransparency = 0.25;
+                    }
+                }
+            }
+            this.selectedRow = index;
+            if (this.onRowSelect) this.onRowSelect(index);
+        }
+    }
+    createEntryInColumn(column: number, index: number, text: string) {
+        let col = this.columnFrames.get(column);
+        if (col) {
+            let lbl = this.gui.createGuiLabelBtn(col.frame, text, new UDim2(1, 0, 0.08, 0), new UDim2(0, 0, 0, this.getTextHeightFromIndex(column, index)), undefined, text, true);
+            lbl.TextWrapped = true;
+
+            let onSel = () => {
+                this.selectHandler(column, index);
+            }
+
+            lbl.MouseButton1Click.Connect(onSel);
+            lbl.TouchTap.Connect(onSel);
+
+            let colData = this.tableData.get(column);
+            if (colData) {
+                colData.set(index, { "textLabel": lbl, "value": text });
+            }
+        } else {
+            warn(`Invalid col id ${column}`);
+        }
+    }
+    addRow(index: number, data: Array<string>) {
+        for (let i = 0; i < data.size(); i++) {
+            this.createEntryInColumn(i, index, data[i]);
+        }
     }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
         let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 2, 0, 0));
@@ -108,6 +166,7 @@ class UITable {
             border.BackgroundTransparency = 0.9;
         }
         this.columnFrames.set(index, data);
+        this.tableData.set(index, new Map());
     }
     columnNameToIndex(name: string): number {
         let i = 0;
@@ -116,11 +175,12 @@ class UITable {
     }
 
 
-    constructor(gui: Gui, parent: GuiObject, columns: Array<string>, size: UDim2, position: UDim2) {
+    constructor(gui: Gui, parent: GuiObject, columns: Array<string>, size: UDim2, position: UDim2, rowsClickable = true) {
         this.columns = columns;
         this.columnCount = columns.size();
         this.gui = gui;
         this.parent = parent;
+        this.rowsClickable = rowsClickable;
         this.tableData = new Map(); /* Placeholder, REMOVE WHEN DONE */
         this.tableFrame = this.gui.createInvisibleFrame(parent, "Table", size, position, undefined);
         let returnVal = createBorder(this.tableFrame, undefined, undefined, 0.3);
@@ -147,8 +207,9 @@ class UITable {
             i++;
         });
 
-        //TEMP
-        this.gui.createGuiLabel((this.columnFrames.get(0) as { "name": string, "frame": Frame }).frame, undefined, undefined, undefined, undefined, "Hello!", true);
+        this.addRow(0, ["Hello1", "Hello2", "Hello3"]);
+        this.addRow(1, ["Hello4", "Hello5", "Hello6"]);
+
 
     }
 }
