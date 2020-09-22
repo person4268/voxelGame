@@ -76,7 +76,7 @@ class UITable {
     columnFrames: Map<number, { "name": string, "frame": Frame }> = new Map();
     scrollingFrame: ScrollingFrame;
     rowsClickable: boolean;
-    onRowSelect?: (row: number) => {}
+    onRowSelect?: (row: number) => void
     getColPositionFromIndex(index: number, totalCount: number): number {
         if (index === 0) return 0;
         return 1 / totalCount * index;
@@ -150,6 +150,25 @@ class UITable {
             this.createEntryInColumn(i, index, data[i]);
         }
     }
+    removeRow(index: number) {
+        this.tableData.forEach((col)=>{
+            let data = col.get(index);
+            if(data) {
+                data.textLabel.Destroy();
+                col.delete(index);
+            }
+        });
+    }
+    clearChart() {
+        this.tableData.forEach((col)=>{
+            col.forEach((index)=>{
+                index.textLabel.Destroy();
+            });
+            for(let i=0; i<col.size(); i++) {
+                col.delete(i);
+            }
+        });
+    }
     createColumnTab(name: string, index: number, totalCount: number, createDragger = true) {
         let containerFrame = this.gui.createInvisibleFrame(this.scrollingFrame, name, new UDim2(1 / totalCount, -2, 1, 0), new UDim2(this.getColPositionFromIndex(index, totalCount), 0, 0, 0));
         let data = { "name": name, "frame": containerFrame };
@@ -159,10 +178,10 @@ class UITable {
         titleText.TextWrapped = true; /* Because of the lack of vertical space in the textlabel, this effectively crops it off */
 
         if (createDragger) {
-            let titleDragger = this.gui.createInvisibleFrame(titleText, "Dragger", new UDim2(0, 1, 1, 0), new UDim2(1, -4, 0, 0), undefined);
+            let titleDragger = this.gui.createInvisibleFrame(titleText, "Dragger", new UDim2(0, 1, 1, 0), new UDim2(1, -1, 0, 0), undefined);
             titleDragger.BackgroundTransparency = 0.1;
 
-            let border = this.gui.createInvisibleFrame(containerFrame, "Border", new UDim2(0, 1, 1, 0), new UDim2(1, -4, 0, 0), undefined);
+            let border = this.gui.createInvisibleFrame(containerFrame, "Border", new UDim2(0, 1, 1, 0), new UDim2(1, 0, 0, 0), undefined);
             border.BackgroundTransparency = 0.9;
         }
         this.columnFrames.set(index, data);
@@ -206,11 +225,6 @@ class UITable {
             }
             i++;
         });
-
-        this.addRow(0, ["Hello1", "Hello2", "Hello3"]);
-        this.addRow(1, ["Hello4", "Hello5", "Hello6"]);
-
-
     }
 }
 
