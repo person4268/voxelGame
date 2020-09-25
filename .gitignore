@@ -1,4 +1,5 @@
-node_modules/
-./out/*
-out/
-game.rbxl.lock
+main/node_modules/
+menu/node_modules
+main/out
+menu/out
+*.lock
