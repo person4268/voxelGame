@@ -2,11 +2,11 @@
 
 node %APPDATA%\npm\node_modules\roblox-ts\out\cli.js -p main
 cd bin
-rojo.exe build -o ../main.rbxm ../main
+rojo.exe build -o ../main.rbxlx ../main
 
 cd ..
 node %APPDATA%\npm\node_modules\roblox-ts\out\cli.js -p menu
 cd bin
-rojo build -o ../menu.rbxm ../menu
+rojo build -o ../menu.rbxlx ../menu
 
 echo Done!

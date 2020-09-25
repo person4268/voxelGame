@@ -1,0 +1,5077 @@
+<roblox version="4">
+  <Item class="ReplicatedStorage" referent="0">
+    <Properties>
+      <string name="Name">ReplicatedStorage</string>
+    </Properties>
+    <Item class="Folder" referent="1">
+      <Properties>
+        <string name="Name">TS</string>
+      </Properties>
+      <Item class="ModuleScript" referent="2">
+        <Properties>
+          <string name="Name">globals</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local exports = {};
+local globals = {
+	renderDistance = 32;
+	blockSize = Vector3.new(3, 3, 3);
+	reachLength = 3 * 5;
+	textures = {
+		grid = "rbxassetid://5009068659";
+		grass_top = "rbxassetid://5295578161";
+		grass_side = "rbxassetid://5295598324";
+		dirt = "rbxassetid://5295593115";
+		brick = "rbxassetid://5295595753";
+		stone = "rbxassetid://5295590108";
+		obsidian = "rbxassetid://5295587145";
+	};
+	chunkSize = Vector2.new(16, 16);
+	simplexNoiseDividend = 36;
+	simplexNoiseScale = 1.75;
+	primaryGenerationHeight = 15;
+	dirtToStoneHeight = 7;
+};
+exports.default = globals;
+return exports;
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="3">
+        <Properties>
+          <string name="Name">isBlockReachable</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local function isBlockReachable(blockPosition, playerPosition)
+	local blockRealPos = (blockPosition * (globals.blockSize));
+	local distanceFromBlockToPlr = (playerPosition - (blockPosition)).Magnitude;
+	if distanceFromBlockToPlr <= globals.reachLength then
+		return true;
+	end;
+	return false;
+end;
+exports.isBlockReachable = isBlockReachable;
+return exports;
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Folder" referent="4">
+      <Properties>
+        <string name="Name">rbxts_include</string>
+      </Properties>
+      <Item class="ModuleScript" referent="5">
+        <Properties>
+          <string name="Name">Promise</string>
+          <string name="Source"><![CDATA[--[[
+	An implementation of Promises similar to Promise/A+.
+	Forked from LPGhatguy/roblox-lua-promise, modified for roblox-ts.
+]]
+
+local PROMISE_DEBUG = false
+
+--[[
+	Packs a number of arguments into a table and returns its length.
+
+	Used to cajole varargs without dropping sparse values.
+]]
+local function pack(...)
+	local len = select("#", ...)
+
+	return len, { ... }
+end
+
+--[[
+	wpcallPacked is a version of xpcall that:
+	* Returns the length of the result first
+	* Returns the result packed into a table
+	* Passes extra arguments through to the passed function; xpcall doesn't
+	* Issues a warning if PROMISE_DEBUG is enabled
+]]
+local function wpcallPacked(f, ...)
+	local argsLength, args = pack(...)
+
+	local body = function()
+		return f(unpack(args, 1, argsLength))
+	end
+
+	local resultLength, result = pack(xpcall(body, debug.traceback))
+
+	-- If promise debugging is on, warn whenever a pcall fails.
+	-- This is useful for debugging issues within the Promise implementation
+	-- itself.
+	if PROMISE_DEBUG and not result[1] then
+		warn(result[2])
+	end
+
+	return resultLength, result
+end
+
+--[[
+	Creates a function that invokes a callback with correct error handling and
+	resolution mechanisms.
+]]
+local function createAdvancer(callback, resolve, reject)
+	return function(...)
+		local resultLength, result = wpcallPacked(callback, ...)
+		local ok = result[1]
+
+		if ok then
+			resolve(unpack(result, 2, resultLength))
+		else
+			reject(unpack(result, 2, resultLength))
+		end
+	end
+end
+
+local function isEmpty(t)
+	return next(t) == nil
+end
+
+local function createSymbol(name)
+	assert(type(name) == "string", "createSymbol requires `name` to be a string.")
+
+	local symbol = newproxy(true)
+
+	getmetatable(symbol).__tostring = function()
+		return ("Symbol(%s)"):format(name)
+	end
+
+	return symbol
+end
+
+local PromiseMarker = createSymbol("PromiseMarker")
+
+local Promise = {}
+Promise.prototype = {}
+Promise.__index = Promise.prototype
+
+Promise.Status = {
+	Started = createSymbol("Started"),
+	Resolved = createSymbol("Resolved"),
+	Rejected = createSymbol("Rejected"),
+	Cancelled = createSymbol("Cancelled"),
+}
+
+--[[
+	Constructs a new Promise with the given initializing callback.
+
+	This is generally only called when directly wrapping a non-promise API into
+	a promise-based version.
+
+	The callback will receive 'resolve' and 'reject' methods, used to start
+	invoking the promise chain.
+
+	For example:
+
+		local function get(url)
+			return Promise.new(function(resolve, reject)
+				spawn(function()
+					resolve(HttpService:GetAsync(url))
+				end)
+			end)
+		end
+
+		get("https://google.com")
+			:andThen(function(stuff)
+				print("Got some stuff!", stuff)
+			end)
+
+	Second parameter, parent, is used internally for tracking the "parent" in a
+	promise chain. External code shouldn't need to worry about this.
+]]
+function Promise.new(callback, parent)
+	if parent ~= nil and not Promise.is(parent) then
+		error("Argument #2 to Promise.new must be a promise or nil", 2)
+	end
+
+	local self = {
+		-- Used to locate where a promise was created
+		_source = debug.traceback(),
+
+		-- A tag to identify us as a promise
+		[PromiseMarker] = true,
+
+		_status = Promise.Status.Started,
+
+		-- A table containing a list of all results, whether success or failure.
+		-- Only valid if _status is set to something besides Started
+		_values = nil,
+
+		-- Lua doesn't like sparse arrays very much, so we explicitly store the
+		-- length of _values to handle middle nils.
+		_valuesLength = -1,
+
+		-- If an error occurs with no observers, this will be set.
+		_unhandledRejection = false,
+
+		-- Queues representing functions we should invoke when we update!
+		_queuedResolve = {},
+		_queuedReject = {},
+		_queuedFinally = {},
+
+		-- The function to run when/if this promise is cancelled.
+		_cancellationHook = nil,
+
+		-- The "parent" of this promise in a promise chain. Required for
+		-- cancellation propagation.
+		_parent = parent,
+
+		-- The number of consumers attached to this promise. This is needed so that
+		-- we don't propagate promise cancellations when there are still uncancelled
+		-- consumers.
+		_numConsumers = 0,
+	}
+
+	setmetatable(self, Promise)
+
+	local function resolve(...)
+		self:_resolve(...)
+	end
+
+	local function reject(...)
+		self:_reject(...)
+	end
+
+	local function onCancel(cancellationHook)
+		assert(type(cancellationHook) == "function", "onCancel must be called with a function as its first argument.")
+
+		if self._status == Promise.Status.Cancelled then
+			cancellationHook()
+		else
+			self._cancellationHook = cancellationHook
+		end
+	end
+
+	local _, result = wpcallPacked(callback, resolve, reject, onCancel)
+	local ok = result[1]
+	local err = result[2]
+
+	if not ok and self._status == Promise.Status.Started then
+		reject(err)
+	end
+
+	return self
+end
+
+--[[
+	Fast spawn: Spawns a thread with predictable timing.
+	Runs immediately instead of first cycle being deferred.
+]]
+function Promise.spawn(callback, ...)
+	local spawnBindable = Instance.new("BindableEvent")
+	local args = { ... }
+	local length = select("#", ...)
+	spawnBindable.Event:Connect(function()
+		callback(unpack(args, 1, length))
+	end)
+	spawnBindable:Fire()
+	spawnBindable:Destroy()
+end
+
+--[[
+	Create a promise that represents the immediately resolved value.
+]]
+function Promise.resolve(value)
+	return Promise.new(function(resolve)
+		resolve(value)
+	end)
+end
+
+--[[
+	Create a promise that represents the immediately rejected value.
+]]
+function Promise.reject(value)
+	return Promise.new(function(_, reject)
+		reject(value)
+	end)
+end
+
+--[[
+	Returns a new promise that:
+		* is resolved when all input promises resolve
+		* is rejected if ANY input promises reject
+]]
+function Promise.all(promises)
+	if type(promises) ~= "table" then
+		error("Please pass a list of promises to Promise.all", 2)
+	end
+
+	-- If there are no values then return an already resolved promise.
+	if #promises == 0 then
+		return Promise.resolve({})
+	end
+
+	-- We need to check that each value is a promise here so that we can produce
+	-- a proper error rather than a rejected promise with our error.
+	for i = 1, #promises do
+		if not Promise.is(promises[i]) then
+			error(("Non-promise value passed into Promise.all at index #%d"):format(i), 2)
+		end
+	end
+
+	return Promise.new(function(resolve, reject)
+		-- An array to contain our resolved values from the given promises.
+		local resolvedValues = {}
+
+		-- Keep a count of resolved promises because just checking the resolved
+		-- values length wouldn't account for promises that resolve with nil.
+		local resolvedCount = 0
+
+		-- Called when a single value is resolved and resolves if all are done.
+		local function resolveOne(i, ...)
+			resolvedValues[i] = ...
+			resolvedCount = resolvedCount + 1
+
+			if resolvedCount == #promises then
+				resolve(resolvedValues)
+			end
+		end
+
+		-- We can assume the values inside `promises` are all promises since we
+		-- checked above.
+		for i = 1, #promises do
+			promises[i]:andThen(
+				function(...)
+					resolveOne(i, ...)
+				end,
+				function(...)
+					reject(...)
+				end
+			)
+		end
+	end)
+end
+
+--[[
+	Is the given object a Promise instance?
+]]
+function Promise.is(object)
+	if type(object) ~= "table" then
+		return false
+	end
+
+	return object[PromiseMarker] == true
+end
+
+function Promise.prototype:getStatus()
+	return self._status
+end
+
+function Promise.prototype:isRejected()
+	return self._status == Promise.Status.Rejected
+end
+
+function Promise.prototype:isResolved()
+	return self._status == Promise.Status.Resolved
+end
+
+function Promise.prototype:isPending()
+	return self._status == Promise.Status.Started
+end
+
+function Promise.prototype:isCancelled()
+	return self._status == Promise.Status.Cancelled
+end
+
+--[[
+	Creates a new promise that receives the result of this promise.
+
+	The given callbacks are invoked depending on that result.
+]]
+function Promise.prototype:andThen(successHandler, failureHandler)
+	self._unhandledRejection = false
+	self._numConsumers = self._numConsumers + 1
+
+	-- Create a new promise to follow this part of the chain
+	return Promise.new(function(resolve, reject)
+		-- Our default callbacks just pass values onto the next promise.
+		-- This lets success and failure cascade correctly!
+
+		local successCallback = resolve
+		if successHandler then
+			successCallback = createAdvancer(successHandler, resolve, reject)
+		end
+
+		local failureCallback = reject
+		if failureHandler then
+			failureCallback = createAdvancer(failureHandler, resolve, reject)
+		end
+
+		if self._status == Promise.Status.Started then
+			-- If we haven't resolved yet, put ourselves into the queue
+			table.insert(self._queuedResolve, successCallback)
+			table.insert(self._queuedReject, failureCallback)
+		elseif self._status == Promise.Status.Resolved then
+			-- This promise has already resolved! Trigger success immediately.
+			successCallback(unpack(self._values, 1, self._valuesLength))
+		elseif self._status == Promise.Status.Rejected then
+			-- This promise died a terrible death! Trigger failure immediately.
+			failureCallback(unpack(self._values, 1, self._valuesLength))
+		elseif self._status == Promise.Status.Cancelled then
+			-- We don't want to call the success handler or the failure handler,
+			-- we just reject this promise outright.
+			reject("Promise is cancelled")
+		end
+	end, self)
+end
+
+--[[
+	Used to catch any errors that may have occurred in the promise.
+]]
+function Promise.prototype:catch(failureCallback)
+	return self:andThen(nil, failureCallback)
+end
+
+--[[
+	Cancels the promise, disallowing it from rejecting or resolving, and calls
+	the cancellation hook if provided.
+]]
+function Promise.prototype:cancel()
+	if self._status ~= Promise.Status.Started then
+		return
+	end
+
+	self._status = Promise.Status.Cancelled
+
+	if self._cancellationHook then
+		self._cancellationHook()
+	end
+
+	if self._parent then
+		self._parent:_consumerCancelled()
+	end
+
+	self:_finalize()
+end
+
+--[[
+	Used to decrease the number of consumers by 1, and if there are no more,
+	cancel this promise.
+]]
+function Promise.prototype:_consumerCancelled()
+	self._numConsumers = self._numConsumers - 1
+
+	if self._numConsumers <= 0 then
+		self:cancel()
+	end
+end
+
+--[[
+	Used to set a handler for when the promise resolves, rejects, or is
+	cancelled. Returns a new promise chained from this promise.
+]]
+function Promise.prototype:finally(finallyHandler)
+	self._numConsumers = self._numConsumers + 1
+
+	-- Return a promise chained off of this promise
+	return Promise.new(function(resolve, reject)
+		local finallyCallback = resolve
+		if finallyHandler then
+			finallyCallback = createAdvancer(finallyHandler, resolve, reject)
+		end
+
+		if self._status == Promise.Status.Started then
+			-- The promise is not settled, so queue this.
+			table.insert(self._queuedFinally, finallyCallback)
+		else
+			-- The promise already settled or was cancelled, run the callback now.
+			finallyCallback()
+		end
+	end, self)
+end
+
+--[[
+	Yield until the promise is completed.
+
+	This matches the execution model of normal Roblox functions.
+]]
+function Promise.prototype:await()
+	self._unhandledRejection = false
+
+	if self._status == Promise.Status.Started then
+		local result
+		local resultLength
+		local bindable = Instance.new("BindableEvent")
+
+		self:andThen(
+			function(...)
+				resultLength, result = pack(...)
+				bindable:Fire(true)
+			end,
+			function(...)
+				resultLength, result = pack(...)
+				bindable:Fire(false)
+			end
+		)
+		self:finally(function()
+			bindable:Fire(nil)
+		end)
+
+		local ok = bindable.Event:Wait()
+		bindable:Destroy()
+
+		if ok == nil then
+			-- If cancelled, we return nil.
+			return nil
+		end
+
+		return ok, unpack(result, 1, resultLength)
+	elseif self._status == Promise.Status.Resolved then
+		return true, unpack(self._values, 1, self._valuesLength)
+	elseif self._status == Promise.Status.Rejected then
+		return false, unpack(self._values, 1, self._valuesLength)
+	end
+
+	-- If the promise is cancelled, fall through to nil.
+	return nil
+end
+
+--[[
+	Intended for use in tests.
+
+	Similar to await(), but instead of yielding if the promise is unresolved,
+	_unwrap will throw. This indicates an assumption that a promise has
+	resolved.
+]]
+function Promise.prototype:_unwrap()
+	if self._status == Promise.Status.Started then
+		error("Promise has not resolved or rejected.", 2)
+	end
+
+	local success = self._status == Promise.Status.Resolved
+
+	return success, unpack(self._values, 1, self._valuesLength)
+end
+
+function Promise.prototype:_resolve(...)
+	if self._status ~= Promise.Status.Started then
+		return
+	end
+
+	-- If the resolved value was a Promise, we chain onto it!
+	if Promise.is((...)) then
+		-- Without this warning, arguments sometimes mysteriously disappear
+		if select("#", ...) > 1 then
+			local message = (
+				"When returning a Promise from andThen, extra arguments are " ..
+				"discarded! See:\n\n%s"
+			):format(
+				self._source
+			)
+			warn(message)
+		end
+
+		(...):andThen(
+			function(...)
+				self:_resolve(...)
+			end,
+			function(...)
+				self:_reject(...)
+			end
+		)
+
+		return
+	end
+
+	self._status = Promise.Status.Resolved
+	self._valuesLength, self._values = pack(...)
+
+	-- We assume that these callbacks will not throw errors.
+	for _, callback in ipairs(self._queuedResolve) do
+		callback(...)
+	end
+
+	self:_finalize()
+end
+
+function Promise.prototype:_reject(...)
+	if self._status ~= Promise.Status.Started then
+		return
+	end
+
+	self._status = Promise.Status.Rejected
+	self._valuesLength, self._values = pack(...)
+
+	-- If there are any rejection handlers, call those!
+	if not isEmpty(self._queuedReject) then
+		-- We assume that these callbacks will not throw errors.
+		for _, callback in ipairs(self._queuedReject) do
+			callback(...)
+		end
+	else
+		-- At this point, no one was able to observe the error.
+		-- An error handler might still be attached if the error occurred
+		-- synchronously. We'll wait one tick, and if there are still no
+		-- observers, then we should put a message in the console.
+
+		self._unhandledRejection = true
+		local err = tostring((...))
+
+		spawn(function()
+			-- Someone observed the error, hooray!
+			if not self._unhandledRejection then
+				return
+			end
+
+			-- Build a reasonable message
+			local message = ("Unhandled promise rejection:\n\n%s\n\n%s"):format(
+				err,
+				self._source
+			)
+			warn(message)
+		end)
+	end
+
+	self:_finalize()
+end
+
+--[[
+	Calls any :finally handlers. We need this to be a separate method and
+	queue because we must call all of the finally callbacks upon a success,
+	failure, *and* cancellation.
+]]
+function Promise.prototype:_finalize()
+	for _, callback in ipairs(self._queuedFinally) do
+		-- Purposefully not passing values to callbacks here, as it could be the
+		-- resolved values, or rejected errors. If the developer needs the values,
+		-- they should use :andThen or :catch explicitly.
+		callback()
+	end
+end
+
+return Promise
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="6">
+        <Properties>
+          <string name="Name">RuntimeLib</string>
+          <string name="Source"><![CDATA[local Promise = require(script.Parent.Promise)
+
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+
+local ReplicatedFirst
+if not __LEMUR__ then
+	ReplicatedFirst = game:GetService("ReplicatedFirst")
+end
+
+local TS = {}
+
+-- runtime classes
+TS.Promise = Promise
+
+local Symbol do
+	Symbol = {}
+	Symbol.__index = Symbol
+	setmetatable(Symbol, {
+		__call = function(_, description)
+			local self = setmetatable({}, Symbol)
+			self.description = "Symbol(" .. (description or "") .. ")"
+			return self
+		end
+	})
+
+	local symbolRegistry = setmetatable({}, {
+		__index = function(self, k)
+			self[k] = Symbol(k)
+			return self[k]
+		end
+	})
+
+	function Symbol:toString()
+		return self.description
+	end
+
+	Symbol.__tostring = Symbol.toString
+
+	-- Symbol.for
+	function Symbol.getFor(key)
+		return symbolRegistry[key]
+	end
+
+	function Symbol.keyFor(goalSymbol)
+		for key, symbol in pairs(symbolRegistry) do
+			if symbol == goalSymbol then
+				return key
+			end
+		end
+	end
+end
+
+TS.Symbol = Symbol
+TS.Symbol_iterator = Symbol("Symbol.iterator")
+
+local function isPlugin(object)
+	return RunService:IsStudio() and object:FindFirstAncestorWhichIsA("Plugin") ~= nil
+end
+
+-- module resolution
+function TS.getModule(object, moduleName)
+	if not __LEMUR__ and object:IsDescendantOf(ReplicatedFirst) then
+		warn("roblox-ts packages should not be used from ReplicatedFirst!")
+	end
+
+	-- ensure modules have fully replicated
+	if not __LEMUR__ and RunService:IsRunning() and RunService:IsClient() and not isPlugin(object) and not game:IsLoaded() then
+		game.Loaded:Wait()
+	end
+
+	local globalModules = script.Parent:FindFirstChild("node_modules")
+	if not globalModules then
+		error("Could not find any modules!", 2)
+	end
+
+	repeat
+		local modules = object:FindFirstChild("node_modules")
+		if modules then
+			local module = modules:FindFirstChild(moduleName)
+			if module then
+				return module
+			end
+		end
+		object = object.Parent
+	until object == nil or object == globalModules
+
+	return globalModules:FindFirstChild(moduleName) or error("Could not find module: " .. moduleName, 2)
+end
+
+-- This is a hash which TS.import uses as a kind of linked-list-like history of [Script who Loaded] -> Library
+local currentlyLoading = {}
+local registeredLibraries = {}
+
+function TS.import(caller, module, ...)
+	for i = 1, select("#", ...) do
+		module = module:WaitForChild((select(i, ...)))
+	end
+
+	if module.ClassName ~= "ModuleScript" then
+		error("Failed to import! Expected ModuleScript, got " .. module.ClassName, 2)
+	end
+
+	currentlyLoading[caller] = module
+
+	-- Check to see if a case like this occurs:
+	-- module -> Module1 -> Module2 -> module
+
+	-- WHERE currentlyLoading[module] is Module1
+	-- and currentlyLoading[Module1] is Module2
+	-- and currentlyLoading[Module2] is module
+
+	local currentModule = module
+	local depth = 0
+
+	while currentModule do
+		depth = depth + 1
+		currentModule = currentlyLoading[currentModule]
+
+		if currentModule == module then
+			local str = currentModule.Name -- Get the string traceback
+
+			for _ = 1, depth do
+				currentModule = currentlyLoading[currentModule]
+				str = str .. "  ⇒ " .. currentModule.Name
+			end
+
+			error("Failed to import! Detected a circular dependency chain: " .. str, 2)
+		end
+	end
+
+	if not registeredLibraries[module] then
+		if _G[module] then
+			error("Invalid module access! Do you have two TS runtimes trying to import this? " .. module:GetFullName(), 2)
+		end
+
+		_G[module] = TS
+		registeredLibraries[module] = true -- register as already loaded for subsequent calls
+	end
+
+	local data = require(module)
+
+	if currentlyLoading[caller] == module then -- Thread-safe cleanup!
+		currentlyLoading[caller] = nil
+	end
+
+	return data
+end
+
+function TS.exportNamespace(module, ancestor)
+	for key, value in pairs(module) do
+		ancestor[key] = value
+	end
+end
+
+-- general utility functions
+function TS.instanceof(obj, class)
+	-- custom Class.instanceof() check
+	if type(class) == "table" and type(class.instanceof) == "function" then
+		return class.instanceof(obj)
+	end
+
+	-- metatable check
+	if type(obj) == "table" then
+		obj = getmetatable(obj)
+		while obj ~= nil do
+			if obj == class then
+				return true
+			end
+			local mt = getmetatable(obj)
+			if mt then
+				obj = mt.__index
+			else
+				obj = nil
+			end
+		end
+	end
+
+	return false
+end
+
+function TS.async(callback)
+	return function(...)
+		local n = select("#", ...)
+		local args = { ... }
+		return Promise.new(function(resolve, reject)
+			coroutine.wrap(function()
+				local ok, result = pcall(callback, unpack(args, 1, n))
+				if ok then
+					resolve(result)
+				else
+					reject(result)
+				end
+			end)()
+		end)
+	end
+end
+
+function TS.generator(c)
+	c = coroutine.create(c)
+
+	local o = {
+		next = function(...)
+			if coroutine.status(c) == "dead" then
+				return { done = true }
+			else
+				local success, value = coroutine.resume(c, ...)
+				if success == false then error(value, 2) end
+				return { value = value, done = coroutine.status(c) == "dead" }
+			end
+		end
+	}
+
+	o[TS.Symbol_iterator] = function() return o end
+
+	return o
+end
+
+local function package(...)
+	return select("#", ...), {...}
+end
+
+local function assertAwait(ok, ...)
+	if ok then
+		return ...
+	else
+		error(ok == nil and "The awaited Promise was cancelled" or (...), 2)
+	end
+end
+
+function TS.await(promise)
+	if Promise.is(promise) then
+		return assertAwait(promise:await())
+	else
+		return promise
+	end
+end
+
+function TS.add(a, b)
+	if type(a) == "string" or type(b) == "string" then
+		return a .. b
+	else
+		return a + b
+	end
+end
+
+function TS.bit_lrsh(a, b)
+	local absA = math.abs(a)
+	local result = bit32.rshift(absA, b)
+	if a == absA then
+		return result
+	else
+		return -result - 1
+	end
+end
+
+-- utility functions
+local function copy(object)
+	local result = {}
+	for k, v in pairs(object) do
+		result[k] = v
+	end
+	return result
+end
+
+local function deepCopyHelper(object, encountered)
+	local result = {}
+	encountered[object] = result
+
+	for k, v in pairs(object) do
+		if type(k) == "table" then
+			k = encountered[k] or deepCopyHelper(k, encountered)
+		end
+
+		if type(v) == "table" then
+			v = encountered[v] or deepCopyHelper(v, encountered)
+		end
+
+		result[k] = v
+	end
+
+	return result
+end
+
+local function deepCopy(object)
+	return deepCopyHelper(object, {})
+end
+
+local function deepEquals(a, b)
+	-- a[k] == b[k]
+	for k in pairs(a) do
+		local av = a[k]
+		local bv = b[k]
+		if type(av) == "table" and type(bv) == "table" then
+			local result = deepEquals(av, bv)
+			if not result then
+				return false
+			end
+		elseif av ~= bv then
+			return false
+		end
+	end
+
+	-- extra keys in b
+	for k in pairs(b) do
+		if a[k] == nil then
+			return false
+		end
+	end
+
+	return true
+end
+
+-- Object static functions
+
+function TS.Object_keys(object)
+	local result = {}
+	for key in pairs(object) do
+		result[#result + 1] = key
+	end
+	return result
+end
+
+function TS.Object_values(object)
+	local result = {}
+	for _, value in pairs(object) do
+		result[#result + 1] = value
+	end
+	return result
+end
+
+function TS.Object_entries(object)
+	local result = {}
+	for key, value in pairs(object) do
+		result[#result + 1] = { key, value }
+	end
+	return result
+end
+
+function TS.Object_assign(toObj, ...)
+	for i = 1, select("#", ...) do
+		local arg = select(i, ...)
+		if type(arg) == "table" then
+			for key, value in pairs(arg) do
+				toObj[key] = value
+			end
+		end
+	end
+	return toObj
+end
+
+TS.Object_copy = copy
+
+TS.Object_deepCopy = deepCopy
+
+TS.Object_deepEquals = deepEquals
+
+local function toString(data)
+	return HttpService:JSONEncode(data)
+end
+
+TS.Object_toString = toString
+
+-- string macro functions
+function TS.string_find_wrap(a, b, ...)
+	if a then
+		return a - 1, b - 1, ...
+	end
+end
+
+-- array macro functions
+local function array_copy(list)
+	local result = {}
+	for i = 1, #list do
+		result[i] = list[i]
+	end
+	return result
+end
+
+TS.array_copy = array_copy
+
+function TS.array_entries(list)
+	local result = {}
+	for key = 1, #list do
+		result[key] = { key - 1, list[key] }
+	end
+	return result
+end
+
+function TS.array_forEach(list, callback)
+	for i = 1, #list do
+		callback(list[i], i - 1, list)
+	end
+end
+
+local function array_map(list, callback)
+	local result = {}
+	for i = 1, #list do
+		result[i] = callback(list[i], i - 1, list)
+	end
+	return result
+end
+
+TS.array_map = array_map
+
+function TS.array_mapFiltered(list, callback)
+    local new = {}
+    local index = 1
+
+    for i = 1, #list do
+        local result = callback(list[i], i - 1, list)
+
+        if result ~= nil then
+            new[index] = result
+            index = index + 1
+        end
+    end
+
+    return new
+end
+
+local function getArraySizeSlow(list)
+    local result = 0
+    for index in pairs(list) do
+        if index > result then
+            result = index
+        end
+    end
+    return result
+end
+
+function TS.array_filterUndefined(list)
+	local length = 0
+	local result = {}
+	for i = 1, getArraySizeSlow(list) do
+		local value = list[i]
+		if value ~= nil then
+			length = length + 1
+			result[length] = value
+		end
+	end
+	return result
+end
+
+function TS.array_filter(list, callback)
+	local result = {}
+	for i = 1, #list do
+		local v = list[i]
+		if callback(v, i - 1, list) == true then
+			result[#result + 1] = v
+		end
+	end
+	return result
+end
+
+function TS.array_sort(list, callback)
+	table.sort(list, callback)
+	return list
+end
+
+TS.array_toString = toString
+
+function TS.array_slice(list, startI, endI)
+	local length = #list
+
+	if startI == nil then startI = 0 end
+	if endI == nil then endI = length end
+
+	if startI < 0 then startI = length + startI end
+	if endI < 0 then endI = length + endI end
+
+	local result = {}
+
+	for i = startI + 1, endI do
+		result[i - startI] = list[i]
+	end
+
+	return result
+end
+
+function TS.array_splice(list, start, deleteCount, ...)
+	local len = #list
+	local actualStart
+	if start < 0 then
+		actualStart = len + start
+		if actualStart < 0 then
+			actualStart = 0
+		end
+	else
+		if start < len then
+			actualStart = start
+		else
+			actualStart = len
+		end
+	end
+	local items = { ... }
+	local itemCount = #items
+	local actualDeleteCount
+	if start == nil then
+		actualDeleteCount = 0
+	elseif deleteCount == nil then
+		actualDeleteCount = len - actualStart
+	else
+		if deleteCount < 0 then
+			deleteCount = 0
+		end
+		actualDeleteCount = len - actualStart
+		if deleteCount < actualDeleteCount then
+			actualDeleteCount = deleteCount
+		end
+	end
+	local out = {}
+	local k = 0
+	while k < actualDeleteCount do
+		local from = actualStart + k
+		if list[from + 1] then
+			out[k + 1] = list[from + 1]
+		end
+		k = k + 1
+	end
+	if itemCount < actualDeleteCount then
+		k = actualStart
+		while k < len - actualDeleteCount do
+			local from = k + actualDeleteCount
+			local to = k + itemCount
+			if list[from + 1] then
+				list[to + 1] = list[from + 1]
+			else
+				list[to + 1] = nil
+			end
+			k = k + 1
+		end
+		k = len
+		while k > len - actualDeleteCount + itemCount do
+			list[k] = nil
+			k = k - 1
+		end
+	elseif itemCount > actualDeleteCount then
+		k = len - actualDeleteCount
+		while k > actualStart do
+			local from = k + actualDeleteCount
+			local to = k + itemCount
+			if list[from] then
+				list[to] = list[from]
+			else
+				list[to] = nil
+			end
+			k = k - 1
+		end
+	end
+	k = actualStart
+	for i = 1, #items do
+		list[k + 1] = items[i]
+		k = k + 1
+	end
+	k = #list
+	while k > len - actualDeleteCount + itemCount do
+		list[k] = nil
+		k = k - 1
+	end
+	return out
+end
+
+function TS.array_some(list, callback)
+	for i = 1, #list do
+		if callback(list[i], i - 1, list) == true then
+			return true
+		end
+	end
+	return false
+end
+
+function TS.array_every(list, callback)
+	for i = 1, #list do
+		if not callback(list[i], i - 1, list) then
+			return false
+		end
+	end
+	return true
+end
+
+function TS.array_includes(list, item, startingIndex)
+	for i = (startingIndex or 0) + 1, #list do
+		if list[i] == item then
+			return true
+		end
+	end
+	return false
+end
+
+function TS.array_indexOf(list, value, fromIndex)
+	for i = (fromIndex or 0) + 1, #list do
+		if value == list[i] then
+			return i - 1
+		end
+	end
+	return -1
+end
+
+function TS.array_lastIndexOf(list, value, fromIndex)
+	for i = (fromIndex or #list - 1) + 1, 1, -1 do
+		if value == list[i] then
+			return i - 1
+		end
+	end
+	return -1
+end
+
+function TS.array_reverse(list)
+	local result = {}
+	local length = #list
+	local n = length + 1
+	for i = 1, length do
+		result[i] = list[n - i]
+	end
+	return result
+end
+
+function TS.array_reduce(list, callback, ...)
+	local first = 1
+	local last = #list
+	local accumulator
+	-- support `nil` initialValues
+	if select("#", ...) == 0 then
+		if last == 0 then
+			error("Reduce of empty array with no initial value at Array.reduce", 2)
+		end
+		accumulator = list[first]
+		first = first + 1
+	else
+		accumulator = ...
+	end
+	for i = first, last do
+		accumulator = callback(accumulator, list[i], i - 1, list)
+	end
+	return accumulator
+end
+
+function TS.array_reduceRight(list, callback, ...)
+	local first = #list
+	local last = 1
+	local accumulator
+	-- support `nil` initialValues
+	if select("#", ...) == 0 then
+		if first == 0 then
+			error("Reduce of empty array with no initial value at Array.reduceRight", 2)
+		end
+		accumulator = list[first]
+		first = first - 1
+	else
+		accumulator = ...
+	end
+	for i = first, last, -1 do
+		accumulator = callback(accumulator, list[i], i - 1, list)
+	end
+	return accumulator
+end
+
+function TS.array_unshift(list, ...)
+	local n = #list
+	local argsLength = select("#", ...)
+	for i = n, 1, -1 do
+		list[i + argsLength] = list[i]
+	end
+	for i = 1, argsLength do
+		list[i] = select(i, ...)
+	end
+	return n + argsLength
+end
+
+local function array_push_apply(list, ...)
+	local len = #list
+	for i = 1, select("#", ...) do
+		local list2 = select(i, ...)
+		local len2 = #list2
+		for j = 1, len2 do
+			list[len + j] = list2[j]
+		end
+		len = len + len2
+	end
+	return len
+end
+
+TS.array_push_apply = array_push_apply
+
+function TS.array_push_stack(list, ...)
+	local len = #list
+	local len2 = select("#", ...)
+	for i = 1, len2 do
+		list[len + i] = select(i, ...)
+	end
+	return len + len2
+end
+
+function TS.array_concat(...)
+	local result = {}
+	array_push_apply(result, ...)
+	return result
+end
+
+function TS.array_join(list, separator)
+	return table.concat(array_map(list, tostring), separator or ",")
+end
+
+function TS.array_find(list, callback)
+	for i = 1, #list do
+		local v = list[i]
+		if callback(v, i - 1, list) == true then
+			return v
+		end
+	end
+end
+
+function TS.array_findIndex(list, callback)
+	for i = 0, #list - 1 do
+		if callback(list[i + 1], i, list) == true then
+			return i
+		end
+	end
+	return -1
+end
+
+local function array_flat_helper(list, depth, count, result)
+	for i = 1, #list do
+		local v = list[i]
+
+		if type(v) == "table" and depth ~= 0 then
+			count = array_flat_helper(v, depth - 1, count, result)
+		else
+			count = count + 1
+			result[count] = v
+		end
+	end
+
+	return count
+end
+
+function TS.array_flat(list, depth)
+	local result = {}
+	array_flat_helper(list, depth or 1, 0, result)
+	return result
+end
+
+function TS.array_fill(list, value, from, to)
+	local length = #list
+
+	if from == nil then
+		from = 0
+	elseif from < 0 then
+		from = from + length
+	end
+
+	if to == nil or to > length then
+		to = length
+	elseif to < 0 then
+		to = to + length
+	end
+
+	for i = from + 1, to do
+		list[i] = value
+	end
+
+	return list
+end
+
+function TS.array_copyWithin(list, target, from, to)
+	local length = #list
+
+	if target < 0 then
+		target = target + length
+	end
+
+	if from == nil then
+		from = 0
+	elseif from < 0 then
+		from = from + length
+	end
+
+	if to == nil or to > length then
+		to = length
+	elseif to < 0 then
+		to = to + length
+	end
+
+	local tf = target - from
+	local overshoot = to + tf - length
+
+	if overshoot > 0 then
+		to = from + length - target
+	end
+
+	for i = to, from + 1, -1 do
+		list[i + tf] = list[i]
+	end
+
+	return list
+end
+
+TS.array_deepCopy = deepCopy
+
+TS.array_deepEquals = deepEquals
+
+-- map macro functions
+
+function TS.map_new(pairs)
+	local result = {}
+	if pairs then
+		for i = 1, #pairs do
+			local pair = pairs[i]
+			result[pair[1]] = pair[2]
+		end
+	end
+	return result
+end
+
+TS.Object_fromEntries = TS.map_new
+
+function TS.map_clear(map)
+	for key in pairs(map) do
+		map[key] = nil
+	end
+end
+
+local function getNumKeys(map)
+	local result = 0
+	for _ in pairs(map) do
+		result = result + 1
+	end
+	return result
+end
+
+TS.map_size = getNumKeys
+TS.map_entries = TS.Object_entries
+
+function TS.map_forEach(map, callback)
+	for key, value in pairs(map) do
+		callback(value, key, map)
+	end
+end
+
+TS.map_keys = TS.Object_keys
+
+TS.map_values = TS.Object_values
+TS.map_toString = toString
+
+-- set macro functions
+
+function TS.set_new(values)
+	local result = {}
+	if values then
+		for i = 1, #values do
+			result[values[i]] = true
+		end
+	end
+	return result
+end
+
+TS.set_clear = TS.map_clear
+
+function TS.set_forEach(set, callback)
+	for key in pairs(set) do
+		callback(key, key, set)
+	end
+end
+
+function TS.set_union(set1, set2)
+	local result = {}
+
+	for value in pairs(set1) do
+		result[value] = true
+	end
+
+	for value in pairs(set2) do
+		result[value] = true
+	end
+
+	return result
+end
+
+function TS.set_intersect(set1, set2)
+	local result = {}
+
+	for value in pairs(set1) do
+		if set2[value] then
+			result[value] = true
+		end
+	end
+
+	return result
+end
+
+function TS.set_isDisjointWith(set1, set2)
+	for value in pairs(set1) do
+		if set2[value] then
+			return false
+		end
+	end
+	return true
+end
+
+function TS.set_isSubsetOf(set1, set2)
+	for value in pairs(set1) do
+		if set2[value] == nil then
+			return false
+		end
+	end
+
+	return true
+end
+
+function TS.set_difference(set1, set2)
+	local result = {}
+	for value in pairs(set1) do
+		if set2[value] == nil then
+			result[value] = true
+		end
+	end
+	return result
+end
+
+TS.set_values = TS.Object_keys
+
+TS.set_size = getNumKeys
+
+TS.set_toString = toString
+
+function TS.string_startsWith(str1, str2, pos)
+	local n1 = #str1
+	local n2 = #str2
+
+	if pos == nil or pos ~= pos then
+		pos = 0
+	else
+		pos = math.clamp(pos, 0, n1)
+	end
+
+	local last = pos + n2;
+	return last <= n1 and string.sub(str1, pos + 1, last) == str2
+end
+
+function TS.string_endsWith(str1, str2, pos)
+	local n1 = #str1
+	local n2 = #str2
+
+	if pos == nil then
+		pos = n1
+	elseif pos ~= pos then
+		pos = 0
+	else
+		pos = math.clamp(pos, 0, n1)
+	end
+
+	local start = pos - n2 + 1;
+	return start > 0 and string.sub(str1, start, pos) == str2
+end
+
+-- spread cache functions
+function TS.string_spread(str)
+	local results = {}
+	local count = 0
+	for char in string.gmatch(str, "[%z\1-\127\194-\244][\128-\191]*") do
+		count = count + 1
+		results[count] = char
+	end
+	return results
+end
+
+function TS.iterableCache(iter)
+	local results = {}
+	local count = 0
+	for _0 in iter.next do
+		if _0.done then break end
+		count = count + 1
+		results[count] = _0.value
+	end
+	return results
+end
+
+function TS.iterableFunctionCache(iter)
+	local results = {}
+	local count = 0
+
+	while true do
+		local size, t = package(iter());
+		if size == 0 then break end
+		count = count + 1
+		results[count] = t
+	end
+
+	return results
+end
+
+-- roact functions
+
+function TS.Roact_combine(...)
+	local args = { ... }
+	local result = {}
+	for i = 1, #args do
+		for key, value in pairs(args[i]) do
+			if (type(key) == "number") then
+				table.insert(result, value)
+			else
+				result[key] = value
+			end
+		end
+	end
+	return result
+end
+
+-- opcall
+
+function TS.opcall(func, ...)
+	local success, valueOrErr = pcall(func, ...)
+	if success then
+		return {
+			success = true,
+			value = valueOrErr,
+		}
+	else
+		return {
+			success = false,
+			error = valueOrErr,
+		}
+	end
+end
+
+return TS
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Folder" referent="7">
+        <Properties>
+          <string name="Name">node_modules</string>
+        </Properties>
+        <Item class="Folder" referent="8">
+          <Properties>
+            <string name="Name">net</string>
+          </Properties>
+          <Item class="ModuleScript" referent="9">
+            <Properties>
+              <string name="Name">out</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports;
+local Net;
+local throttler = TS.import(script, script, "Throttle");
+local Serializer = TS.import(script, script, "Serializer");
+local config = TS.import(script, script, "configuration");
+local _0 = TS.import(script, script, "internal");
+local functionExists, eventExists, ServerTickFunctions = _0.functionExists, _0.eventExists, _0.ServerTickFunctions;
+local NetServerEvent = TS.import(script, script, "ServerEvent").default;
+local NetClientEvent = TS.import(script, script, "ClientEvent").default;
+local NetClientFunction = TS.import(script, script, "ClientFunction").default;
+local NetServerFunction = TS.import(script, script, "ServerFunction").default;
+local NetServerThrottledFunction = TS.import(script, script, "ServerThrottledFunction").default;
+local NetServerThrottledEvent = TS.import(script, script, "ServerThrottledEvent").default;
+local NetGlobalEvent = TS.import(script, script, "GlobalEvent").default;
+local NetGlobalServerEvent = TS.import(script, script, "GlobalServerEvent").default;
+local NetServerAsyncFunction = TS.import(script, script, "ServerAsyncFunction").default;
+local NetClientAsyncFunction = TS.import(script, script, "ClientAsyncFunction").default;
+local runService = game:GetService("RunService");
+local _1 = __LEMUR__;
+local _2 = _1 and not (runService:IsServer());
+local IS_CLIENT = _2 or runService:IsClient();
+local IS_SERVER = runService:IsServer();
+Net = Net or {} do
+	local _3 = Net;
+	local Types;
+	local SetConfiguration = config.SetConfiguration;
+	local SetClientConfiguration = config.SetClientConfiguration;
+	local GetConfiguration = config.GetConfiguration;
+	local VERSION = {};
+	VERSION.number = {
+		major = 1;
+		minor = 2;
+		revision = 0;
+	};
+	VERSION.date = 190602;
+	local _4;
+	if IS_LUA_MODULE ~= nil then
+		_4 = "lua";
+	else
+		_4 = "ts";
+	end;
+	VERSION.tag = _4;
+	setmetatable(VERSION, {
+		__tostring = function(self)
+			local _5 = self.number;
+			local major = _5.major;
+			local minor = _5.minor;
+			local revision = _5.revision;
+			local _6;
+			if IS_LUA_MODULE ~= nil then
+				_6 = "-lua";
+			else
+				_6 = "";
+			end;
+			return tostring(major) .. "." .. tostring(minor) .. "." .. tostring(revision) .. _6;
+		end;
+	});
+	local ServerEvent = NetServerEvent;
+	local ClientEvent = NetClientEvent;
+	local ClientFunction = NetClientFunction;
+	local ClientAsyncFunction = NetClientAsyncFunction;
+	local ServerFunction = NetServerFunction;
+	local ServerAsyncFunction = NetServerAsyncFunction;
+	local GlobalEvent = NetGlobalEvent;
+	local GlobalServerEvent = NetGlobalServerEvent;
+	local ServerThrottledEvent = NetServerThrottledEvent;
+	local ServerThrottledFunction = NetServerThrottledFunction;
+	local function IsClient()
+		return IS_CLIENT;
+	end;
+	local function IsServer()
+		return IS_SERVER;
+	end;
+	local Serialize = Serializer.Serialize;
+	local Deserialize = Serializer.Deserialize;
+	local IsSerializable = Serializer.IsSerializable;
+	local function CreateFunction(nameOrOptions)
+		if IS_SERVER then
+			if type(nameOrOptions) == "string" then
+				return NetServerFunction.new(nameOrOptions);
+			else
+				local fn;
+				if nameOrOptions.rateLimit ~= nil then
+					fn = NetServerThrottledFunction.new(nameOrOptions.name, nameOrOptions.rateLimit);
+				else
+					fn = NetServerFunction.new(nameOrOptions.name);
+				end;
+				if nameOrOptions.callback then
+					fn:SetCallback(nameOrOptions.callback);
+				end;
+				local _5 = nameOrOptions.cacheSeconds;
+				if _5 ~= 0 and _5 == _5 and _5 then
+					fn:SetClientCache(nameOrOptions.cacheSeconds);
+				end;
+				return fn;
+			end;
+		else
+			error("Net.createFunction can only be used on the server!");
+		end;
+	end;
+	local function CreateThrottledFunction(name, rateLimit)
+		if IS_SERVER then
+			return NetServerThrottledFunction.new(name, rateLimit);
+		else
+			error("Net.createFunction can only be used on the server!");
+		end;
+	end;
+	local function CreateThrottledEvent(name, rateLimit)
+		if IS_SERVER then
+			return NetServerThrottledEvent.new(name, rateLimit);
+		else
+			error("Net.createFunction can only be used on the server!");
+		end;
+	end;
+	local function CreateEvent(name)
+		if IS_SERVER then
+			return NetServerEvent.new(name);
+		else
+			error("Net.createFunction can only be used on the server!");
+		end;
+	end;
+	local WaitForClientFunctionAsync = TS.async(function(name)
+		return NetClientFunction:WaitFor(name);
+	end);
+	local WaitForClientEventAsync = TS.async(function(name)
+		return NetClientEvent:WaitFor(name);
+	end);
+	local function GetServerEventAsync(name)
+		return TS.Promise.new(function(resolve, reject)
+			if eventExists(name) then
+				local newFunc = ServerEvent.new(name);
+				resolve(newFunc);
+			else
+				reject("Could not find Server Event: " .. name .. " (did you create it on the server?)");
+			end;
+		end);
+	end;
+	local function GetServerFunctionAsync(name)
+		return TS.Promise.new(function(resolve, reject)
+			if functionExists(name) then
+				local newFunc = NetServerFunction.new(name);
+				resolve(newFunc);
+			else
+				reject("Could not find Server Function: " .. name .. " (did you create it?)");
+			end;
+		end);
+	end;
+	if IS_SERVER then
+		local lastTick = 0;
+		ServerTickFunctions[#ServerTickFunctions + 1] = function()
+			if tick() > lastTick + GetConfiguration("ServerThrottleResetTimer") then
+				lastTick = tick();
+				throttler:Clear();
+			end;
+		end;
+	end;
+	function Types(...)
+		local value = { ... };
+		return value;
+	end;
+	_3.SetConfiguration = SetConfiguration;
+	_3.SetClientConfiguration = SetClientConfiguration;
+	_3.GetConfiguration = GetConfiguration;
+	_3.VERSION = VERSION;
+	_3.ServerEvent = ServerEvent;
+	_3.ClientEvent = ClientEvent;
+	_3.ClientFunction = ClientFunction;
+	_3.ClientAsyncFunction = ClientAsyncFunction;
+	_3.ServerFunction = ServerFunction;
+	_3.ServerAsyncFunction = ServerAsyncFunction;
+	_3.GlobalEvent = GlobalEvent;
+	_3.GlobalServerEvent = GlobalServerEvent;
+	_3.ServerThrottledEvent = ServerThrottledEvent;
+	_3.ServerThrottledFunction = ServerThrottledFunction;
+	_3.IsClient = IsClient;
+	_3.IsServer = IsServer;
+	_3.Serialize = Serialize;
+	_3.Deserialize = Deserialize;
+	_3.IsSerializable = IsSerializable;
+	_3.CreateFunction = CreateFunction;
+	_3.CreateThrottledFunction = CreateThrottledFunction;
+	_3.CreateThrottledEvent = CreateThrottledEvent;
+	_3.CreateEvent = CreateEvent;
+	_3.WaitForClientFunctionAsync = WaitForClientFunctionAsync;
+	_3.WaitForClientEventAsync = WaitForClientEventAsync;
+	_3.GetServerEventAsync = GetServerEventAsync;
+	_3.GetServerFunctionAsync = GetServerFunctionAsync;
+	_3.Types = Types;
+end;
+exports = Net;
+return exports;
+]]></string>
+            </Properties>
+            <Item class="ModuleScript" referent="10">
+              <Properties>
+                <string name="Name">ClientAsyncFunction</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local _0 = TS.import(script, script.Parent, "internal");
+local IS_SERVER, getRemoteOrThrow = _0.IS_SERVER, _0.getRemoteOrThrow;
+local _1 = TS.import(script, script.Parent, "configuration");
+local DebugLog, DebugWarn = _1.DebugLog, _1.DebugWarn;
+local HttpService = game:GetService("HttpService");
+local NetClientAsyncFunction;
+do
+	NetClientAsyncFunction = setmetatable({}, {
+		__tostring = function() return "NetClientAsyncFunction" end;
+	});
+	NetClientAsyncFunction.__index = NetClientAsyncFunction;
+	function NetClientAsyncFunction.new(...)
+		local self = setmetatable({}, NetClientAsyncFunction);
+		self:constructor(...);
+		return self;
+	end;
+	function NetClientAsyncFunction:constructor(name)
+		self.timeout = 10;
+		self.listeners = {};
+		self.instance = getRemoteOrThrow("AsyncRemoteFunction", name);
+		assert(not (IS_SERVER), "Cannot create a Net.ClientAsyncFunction on the Server!");
+	end;
+	function NetClientAsyncFunction:SetCallTimeout(timeout)
+		assert(timeout > 0, "timeout must be a positive number");
+		self.timeout = timeout;
+	end;
+	function NetClientAsyncFunction:GetCallTimeout()
+		return self.timeout;
+	end;
+	function NetClientAsyncFunction:SetCallback(callback)
+		if self.connector then
+			self.connector:Disconnect();
+			self.connector = nil;
+		end;
+		self.connector = self.instance.OnClientEvent:Connect(TS.async(function(...)
+			local args = { ... };
+			local eventId = args[1];
+			local data = args[2];
+			if (type(eventId) == "string") and (type(data) == "table") then
+				local result = callback(unpack(TS.iterableCache(data[TS.Symbol_iterator](data))));
+				if TS.Promise.is(result) then
+					result:andThen(function(promiseResult)
+						self.instance:FireServer(eventId, promiseResult);
+					end):catch(function(err)
+						warn("[rbx-net] Failed to send response to server: " .. err);
+					end);
+				else
+					self.instance:FireServer(eventId, result);
+				end;
+			else
+				warn("Recieved message without eventId");
+			end;
+		end));
+	end;
+	NetClientAsyncFunction.CallServerAsync = TS.async(function(self, ...)
+		local args = { ... };
+		local id = HttpService:GenerateGUID(false);
+		local _3 = self.instance;
+		local _2 = {};
+		for _3, _4 in pairs(args) do _2[_3] = _4; end;
+		_3:FireServer(id, _2);
+		return TS.Promise.new(function(resolve, reject)
+			local connection;
+			local startTime = tick();
+			DebugLog("Connected CallServerAsync EventId", id);
+			connection = self.instance.OnClientEvent:Connect(function(...)
+				local recvArgs = { ... };
+				local eventId = recvArgs[1];
+				local data = recvArgs[2];
+				if (type(eventId) == "string") and (data ~= nil) then
+					if eventId == id then
+						DebugLog("Disconnected CallServerAsync EventId", eventId);
+						connection:Disconnect();
+						resolve(data);
+					end;
+				end;
+			end);
+			local _4 = self.listeners;
+			_4[id] = {
+				connection = connection;
+				timeout = self.timeout;
+			};
+			TS.Promise.spawn(function()
+				repeat
+					do
+						game:GetService("RunService").Stepped:Wait();
+					end;
+				until not ((connection.Connected) and (tick() < startTime + self.timeout));
+				self.listeners[id] = nil;
+				if (tick() >= startTime) and (connection.Connected) then
+					DebugWarn("(timeout) Disconnected CallServerAsync EventId", id);
+					connection:Disconnect();
+					reject("Request to client timed out");
+				end;
+			end);
+		end);
+	end);
+end;
+exports.default = NetClientAsyncFunction;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="11">
+              <Properties>
+                <string name="Name">ClientEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetClientEvent;
+local _0 = TS.import(script, script.Parent, "internal");
+local getRemoteOrThrow, IS_CLIENT, waitForEvent, MAX_CLIENT_WAITFORCHILD_TIMEOUT = _0.getRemoteOrThrow, _0.IS_CLIENT, _0.waitForEvent, _0.MAX_CLIENT_WAITFORCHILD_TIMEOUT;
+do
+	NetClientEvent = setmetatable({}, {
+		__tostring = function() return "NetClientEvent" end;
+	});
+	NetClientEvent.__index = NetClientEvent;
+	function NetClientEvent.new(...)
+		local self = setmetatable({}, NetClientEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetClientEvent:constructor(name)
+		self.instance = getRemoteOrThrow("RemoteEvent", name);
+		assert(IS_CLIENT, "Cannot create a Net.ClientEvent on the Server!");
+	end;
+	-- static methods
+	NetClientEvent.WaitFor = TS.async(function(self, name)
+		local fun = waitForEvent(name, MAX_CLIENT_WAITFORCHILD_TIMEOUT);
+		if not (fun) then
+			error("Failed to retrieve client Event!");
+		end;
+		return NetClientEvent.new(name);
+	end);
+	function NetClientEvent:Unmanaged(name)
+		return getRemoteOrThrow("RemoteEvent", name);
+	end;
+	-- instance methods
+	function NetClientEvent:GetInstance()
+		return self.instance;
+	end;
+	function NetClientEvent:GetEvent()
+		return self.instance.OnClientEvent;
+	end;
+	function NetClientEvent:Connect(callback)
+		return self:GetEvent():Connect(callback);
+	end;
+	function NetClientEvent:SendToServer(...)
+		local args = { ... };
+		self.instance:FireServer(unpack(args));
+	end;
+end;
+exports.default = NetClientEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="12">
+              <Properties>
+                <string name="Name">ClientFunction</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetClientFunction;
+local _0 = TS.import(script, script.Parent, "internal");
+local getRemoteOrThrow, IS_CLIENT, functionExists, waitForFunction, MAX_CLIENT_WAITFORCHILD_TIMEOUT = _0.getRemoteOrThrow, _0.IS_CLIENT, _0.functionExists, _0.waitForFunction, _0.MAX_CLIENT_WAITFORCHILD_TIMEOUT;
+do
+	NetClientFunction = setmetatable({}, {
+		__tostring = function() return "NetClientFunction" end;
+	});
+	NetClientFunction.__index = NetClientFunction;
+	function NetClientFunction.new(...)
+		local self = setmetatable({}, NetClientFunction);
+		self:constructor(...);
+		return self;
+	end;
+	function NetClientFunction:constructor(name)
+		self.lastPing = -1;
+		self.cached = {};
+		self.instance = getRemoteOrThrow("RemoteFunction", name);
+		assert(IS_CLIENT, "Cannot create a Net.ClientFunction on the Server!");
+		assert(functionExists(name), "The specified function '" .. name .. "' does not exist!");
+	end;
+	-- static methods
+	NetClientFunction.WaitFor = TS.async(function(self, name)
+		local fun = waitForFunction(name, MAX_CLIENT_WAITFORCHILD_TIMEOUT);
+		if not (fun) then
+			error("Failed to retrieve client Function!");
+		end;
+		return NetClientFunction.new(name);
+	end);
+	function NetClientFunction:Unmanaged(name)
+		return getRemoteOrThrow("RemoteFunction", name);
+	end;
+	-- instance methods
+	function NetClientFunction:GetInstance()
+		return self.instance;
+	end;
+	function NetClientFunction:GetCache()
+		local cache = self.instance:FindFirstChild("Cache");
+		if cache then
+			return cache.Value;
+		else
+			return 0;
+		end;
+	end;
+	function NetClientFunction:CallServer(...)
+		local args = { ... };
+		if self.lastPing < os.time() + self:GetCache() then
+			local result = self.instance:InvokeServer(unpack(args));
+			self.cached = result;
+			self.lastPing = os.time();
+			return result;
+		else
+			return self.cached;
+		end;
+	end;
+	NetClientFunction.CallServerAsync = TS.async(function(self, ...)
+		local args = { ... };
+		return self:CallServer(unpack(args));
+	end);
+end;
+exports.default = NetClientFunction;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="13">
+              <Properties>
+                <string name="Name">GlobalClientEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local getGlobalRemoteId = TS.import(script, script.Parent, "internal").getGlobalRemote;
+local NetClientEvent = TS.import(script, script.Parent, "ClientEvent").default;
+local NetGlobalClientEvent;
+do
+	NetGlobalClientEvent = setmetatable({}, {
+		__tostring = function() return "NetGlobalClientEvent" end;
+	});
+	NetGlobalClientEvent.__index = NetGlobalClientEvent;
+	function NetGlobalClientEvent.new(...)
+		local self = setmetatable({}, NetGlobalClientEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetGlobalClientEvent:constructor(name)
+		self.instance = NetClientEvent.new(getGlobalRemoteId(name));
+	end;
+	function NetGlobalClientEvent:Connect(callback)
+		self.instance:Connect(callback);
+	end;
+end;
+exports.default = NetGlobalClientEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="14">
+              <Properties>
+                <string name="Name">GlobalEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetGlobalEvent;
+local _0 = TS.import(script, script.Parent, "internal");
+local ServerTickFunctions, isLuaTable = _0.ServerTickFunctions, _0.isLuaTable;
+local MockMessagingService = TS.import(script, script.Parent, "MockMessagingService");
+local MessagingService = game:GetService("MessagingService");
+local Players = game:GetService("Players");
+local IS_STUDIO = game:GetService("RunService"):IsStudio();
+local function isSubscriptionMessage(value)
+	if isLuaTable(value) then
+		local hasData = (value["Data"] ~= nil);
+		return hasData;
+	else
+		return false;
+	end;
+end;
+local function isJobTargetMessage(value)
+	if isSubscriptionMessage(value) then
+		if isLuaTable(value.Data) then
+			return (value.Data["jobId"] ~= nil);
+		end;
+	end;
+	return false;
+end;
+local globalMessageQueue = {};
+local lastQueueTick = 0;
+local globalEventMessageCounter = 0;
+local globalSubscriptionCounter = 0;
+local function processMessageQueue()
+	if tick() >= lastQueueTick + 60 then
+		globalEventMessageCounter = 0;
+		globalSubscriptionCounter = 0;
+		lastQueueTick = tick();
+		while #globalMessageQueue > 0 do
+			local _1 = #globalMessageQueue;
+			local message = globalMessageQueue[_1];
+			globalMessageQueue[_1] = nil;
+			MessagingService:PublishAsync(message.Name, message.Data);
+			globalEventMessageCounter = globalEventMessageCounter + 1;
+		end;
+		if globalEventMessageCounter >= NetGlobalEvent:GetMessageLimit() then
+			warn("[rbx-net] Too many messages are being sent, any further messages will be queued!");
+		end;
+	end;
+end;
+do
+	NetGlobalEvent = setmetatable({}, {
+		__tostring = function() return "NetGlobalEvent" end;
+	});
+	NetGlobalEvent.__index = NetGlobalEvent;
+	function NetGlobalEvent.new(...)
+		local self = setmetatable({}, NetGlobalEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetGlobalEvent:constructor(name)
+		self.name = name;
+	end;
+	-- static methods
+	function NetGlobalEvent:GetMessageLimit()
+		return 150 + 60 * #Players:GetPlayers();
+	end;
+	function NetGlobalEvent:GetSubscriptionLimit()
+		return 5 + 2 * #Players:GetPlayers();
+	end;
+	-- instance methods
+	function NetGlobalEvent:SendToServer(jobId, message)
+		self:SendToAllServers({
+			jobId = jobId;
+			message = message;
+		});
+	end;
+	function NetGlobalEvent:SendToAllServers(message)
+		local limit = NetGlobalEvent:GetMessageLimit();
+		if globalEventMessageCounter >= limit then
+			warn("[rbx-net] Exceeded message limit of " .. tostring(limit) .. ", adding to queue...");
+			globalMessageQueue[#globalMessageQueue + 1] = {
+				Name = self.name;
+				Data = message;
+			};
+		else
+			globalEventMessageCounter = globalEventMessageCounter + 1;
+			TS.Promise.spawn(function()
+				local _1 = IS_STUDIO;
+				local _2 = _1 and MockMessagingService;
+				(_2 or MessagingService):PublishAsync(self.name, message);
+			end);
+		end;
+	end;
+	function NetGlobalEvent:Connect(handler)
+		local limit = NetGlobalEvent:GetSubscriptionLimit();
+		if globalSubscriptionCounter >= limit then
+			error("[rbx-net] Exceeded Subscription limit of " .. tostring(limit) .. "!");
+		end;
+		globalSubscriptionCounter = globalSubscriptionCounter + 1;
+		local _1 = IS_STUDIO;
+		local _2 = _1 and MockMessagingService;
+		return (_2 or MessagingService):SubscribeAsync(self.name, function(recieved)
+			local Sent = recieved.Sent;
+			if isJobTargetMessage(recieved) then
+				local Data = recieved.Data;
+				if game.JobId == Data.JobId then
+					handler(Data.InnerData, Sent);
+				end;
+			else
+				handler(recieved.Data, Sent);
+			end;
+		end);
+	end;
+end;
+ServerTickFunctions[#ServerTickFunctions + 1] = processMessageQueue;
+exports.isSubscriptionMessage = isSubscriptionMessage;
+exports.default = NetGlobalEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="15">
+              <Properties>
+                <string name="Name">GlobalServerEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetServerEvent = TS.import(script, script.Parent, "ServerEvent").default;
+local _0 = TS.import(script, script.Parent, "GlobalEvent");
+local NetGlobalEvent, isSubscriptionMessage = _0.default, _0.isSubscriptionMessage;
+local _1 = TS.import(script, script.Parent, "internal");
+local getGlobalRemote, IS_CLIENT, isLuaTable = _1.getGlobalRemote, _1.IS_CLIENT, _1.isLuaTable;
+local Players = game:GetService("Players");
+local function isTargetedSubscriptionMessage(value)
+	if isSubscriptionMessage(value) then
+		if isLuaTable(value.Data) then
+			return (value.Data["InnerData"] ~= nil);
+		end;
+	end;
+	return false;
+end;
+local NetGlobalServerEvent;
+do
+	NetGlobalServerEvent = setmetatable({}, {
+		__tostring = function() return "NetGlobalServerEvent" end;
+	});
+	NetGlobalServerEvent.__index = NetGlobalServerEvent;
+	function NetGlobalServerEvent.new(...)
+		local self = setmetatable({}, NetGlobalServerEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetGlobalServerEvent:constructor(name)
+		self.instance = NetServerEvent.new(getGlobalRemote(name));
+		self.event = NetGlobalEvent.new(name);
+		assert(not (IS_CLIENT), "Cannot create a Net.GlobalServerEvent on the Client!");
+		self.eventHandler = self.event:Connect(function(message)
+			if isTargetedSubscriptionMessage(message) then
+				self:recievedMessage(message.Data);
+			else
+				warn("[rbx-net] Recieved malformed message for GlobalServerEvent: " .. name);
+			end;
+		end);
+	end;
+	function NetGlobalServerEvent:getPlayersMatchingId(matching)
+		if type(matching) == "number" then
+			return Players:GetPlayerByUserId(matching);
+		else
+			local players = {};
+			for _2 = 1, #matching do
+				local id = matching[_2];
+				local player = Players:GetPlayerByUserId(id);
+				if player then
+					players[#players + 1] = player;
+				end;
+			end;
+			return players;
+		end;
+	end;
+	function NetGlobalServerEvent:recievedMessage(message)
+		if message.TargetIds then
+			local players = self:getPlayersMatchingId(message.TargetIds);
+			if players then
+				self.instance:SendToPlayers(players, unpack(message.InnerData));
+			end;
+		else
+			local _2 = message.TargetId;
+			if _2 ~= 0 and _2 == _2 and _2 then
+				local player = self:getPlayersMatchingId(message.TargetId);
+				if player then
+					self.instance:SendToPlayer(player, unpack(message.InnerData));
+				end;
+			else
+				self.instance:SendToAllPlayers(unpack(message.InnerData));
+			end;
+		end;
+	end;
+	function NetGlobalServerEvent:Disconnect()
+		self.eventHandler:Disconnect();
+	end;
+	function NetGlobalServerEvent:SendToAllServers(...)
+		local args = { ... };
+		self.event:SendToAllServers({
+			data = { unpack(args) };
+		});
+	end;
+	function NetGlobalServerEvent:SendToServer(jobId, ...)
+		local args = { ... };
+		self.event:SendToServer(jobId, {
+			data = { unpack(args) };
+		});
+	end;
+	function NetGlobalServerEvent:SendToPlayer(userId, ...)
+		local args = { ... };
+		local player = Players:GetPlayerByUserId(userId);
+		if player then
+			self.instance:SendToPlayer(player, unpack(args));
+		else
+			self.event:SendToAllServers({
+				data = { unpack(args) };
+				targetId = userId;
+			});
+		end;
+	end;
+	function NetGlobalServerEvent:SendToPlayers(userIds, ...)
+		local args = { ... };
+		for _2 = 1, #userIds do
+			local targetId = userIds[_2];
+			local player = Players:GetPlayerByUserId(targetId);
+			if player then
+				self.instance:SendToPlayer(player, unpack(args));
+				table.remove(userIds, targetId + 1);
+			end;
+		end;
+		if #userIds > 0 then
+			self.event:SendToAllServers({
+				data = { unpack(args) };
+				targetIds = userIds;
+			});
+		end;
+	end;
+end;
+exports.default = NetGlobalServerEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="16">
+              <Properties>
+                <string name="Name">MockMessagingService</string>
+                <string name="Source"><![CDATA[local MockMessagingService = {}
+
+local topics = {}
+
+function MockMessagingService:PublishAsync(topicName, message)
+	local topic = topics[topicName]
+	if topic then
+		topic:Fire(
+			{
+				Sent = tick(),
+				Data = message
+			}
+		)
+	end
+end
+
+function MockMessagingService:SubscribeAsync(topicName, callback)
+	local topic = topics[topicName]
+	if not topic then
+		topic = Instance.new("BindableEvent", script)
+		topic.Name = topicName
+		topics[topicName] = topic
+	end
+
+	return topic.Event:Connect(callback)
+end
+
+return MockMessagingService
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="17">
+              <Properties>
+                <string name="Name">Serializer</string>
+                <string name="Source"><![CDATA[local Serializer = {}
+
+function Serializer.Serialize(object)
+	if type(object) ~= "table" then
+		error("Cannot serialize non-object", 2)
+	end
+
+	if type(object.serialize) == "function" then
+		return object:serialize()
+	end
+
+	local serialized = {}
+	for index, value in next, object do
+		if type(value) == "table" then
+			serialized[index] = Serializer.Serialize(value)
+		else
+			serialized[index] = value
+		end
+	end
+
+	return serialized
+end
+
+function Serializer.Deserialize(struct, deserializer)
+	if type(deserializer) == "function" then
+		return deserializer(struct)
+	elseif type(deserializer) == "table" then
+		if type(deserializer.deserialize) == "function" then
+			return deserializer:deserialize(struct)
+		end
+
+		for index, value in next, struct do
+			deserializer[index] = value
+		end
+	end
+end
+
+local function isMixed(t)
+	assert(type(t) == "table")
+	local mixed = false
+	local _idxType
+
+	for index, value in next, t do
+		if _idxType and _idxType ~= type(index) then
+			return true
+		end
+
+		_idxType = type(index)
+		if type(value) == "table" then
+			mixed = mixed and isMixed(value) and not (not getmetatable(value))
+		end
+	end
+
+	return mixed
+end
+
+function Serializer.IsSerializable(value)
+	local _type = type(value)
+	if _type == "number" or _type == "boolean" or _type == "string" then
+		return true
+	elseif _type == "table" then
+		return not isMixed(value) and not getmetatable(value)
+	elseif _type == "userdata" and typeof(_type) ~= "userdata" then -- Instances / Value Types
+		return true
+	else
+		return false
+	end
+end
+
+function Serializer.makeDeserializable(class, callback)
+	local wrapper = {}
+	if (type(callback) == "function") then
+		wrapper.deserialize = function(_, serialized)
+			return callback(serialized)
+		end
+	else
+		wrapper.deserialize = function(_, serialized, ...)
+			local obj = class.new(...)
+			for index, value in next, serialized do
+				obj[index] = value
+			end
+			return obj
+		end
+	end
+
+	return setmetatable(wrapper, {__index = class})
+end
+
+return Serializer
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="18">
+              <Properties>
+                <string name="Name">ServerAsyncFunction</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local _0 = TS.import(script, script.Parent, "internal");
+local findOrCreateRemote, IS_CLIENT, t_assert = _0.findOrCreateRemote, _0.IS_CLIENT, _0.t_assert;
+local _1 = TS.import(script, script.Parent, "configuration");
+local DebugLog, DebugWarn = _1.DebugLog, _1.DebugWarn;
+local HttpService = game:GetService("HttpService");
+local NetServerAsyncFunction;
+do
+	NetServerAsyncFunction = setmetatable({}, {
+		__tostring = function() return "NetServerAsyncFunction" end;
+	});
+	NetServerAsyncFunction.__index = NetServerAsyncFunction;
+	function NetServerAsyncFunction.new(...)
+		local self = setmetatable({}, NetServerAsyncFunction);
+		self:constructor(...);
+		return self;
+	end;
+	function NetServerAsyncFunction:constructor(name, ...)
+		local recievedPropTypes = { ... };
+		self.timeout = 10;
+		self.listeners = {};
+		self.instance = findOrCreateRemote("AsyncRemoteFunction", name);
+		assert(not (IS_CLIENT), "Cannot create a Net.ServerAsyncFunction on the Client!");
+		if #recievedPropTypes > 0 then
+			self.propTypes = recievedPropTypes;
+		end;
+	end;
+	function NetServerAsyncFunction:GetCallTimeout()
+		return self.timeout;
+	end;
+	function NetServerAsyncFunction:SetCallTimeout(timeout)
+		assert(timeout > 0, "timeout must be a positive number");
+		self.timeout = timeout;
+	end;
+	function NetServerAsyncFunction:SetCallback(callback)
+		if self.connector then
+			self.connector:Disconnect();
+			self.connector = nil;
+		end;
+		self.connector = self.instance.OnServerEvent:Connect(TS.async(function(player, ...)
+			local args = { ... };
+			local eventId = args[1];
+			local data = args[2];
+			if (type(eventId) == "string") and (type(data) == "table") then
+				if (self.propTypes == nil) or (t_assert(self.propTypes, data)) then
+					local result = callback(player, unpack((data)));
+					if TS.Promise.is(result) then
+						result:andThen(function(promiseResult)
+							self.instance:FireClient(player, eventId, promiseResult);
+						end):catch(function(err)
+							warn("[rbx-net] Failed to send response to client: " .. err);
+						end);
+					else
+						self.instance:FireClient(player, eventId, result);
+					end;
+				else
+					warn("[rbx-net] Client failed type checks");
+				end;
+			else
+				warn("[rbx-net-async] Recieved message without eventId");
+			end;
+		end));
+	end;
+	NetServerAsyncFunction.CallPlayerAsync = TS.async(function(self, player, ...)
+		local args = { ... };
+		local id = HttpService:GenerateGUID(false);
+		local _3 = self.instance;
+		local _4 = player;
+		local _2 = {};
+		for _3, _4 in pairs(args) do _2[_3] = _4; end;
+		_3:FireClient(_4, id, _2);
+		return TS.Promise.new(function(resolve, reject)
+			local connection;
+			local startTime = tick();
+			DebugLog("Connected CallPlayerAsync EventId", id);
+			connection = self.instance.OnServerEvent:Connect(function(fromPlayer, ...)
+				local recvArgs = { ... };
+				local eventId = recvArgs[1];
+				local data = recvArgs[2];
+				if (type(eventId) == "string") and (data ~= nil) then
+					if (player == player) and (eventId == id) then
+						DebugLog("Disconnected CallPlayerAsync EventId", eventId);
+						connection:Disconnect();
+						resolve(data);
+					end;
+				end;
+			end);
+			local _5 = self.listeners;
+			_5[id] = {
+				connection = connection;
+				timeout = self.timeout;
+			};
+			TS.Promise.spawn(function()
+				repeat
+					do
+						game:GetService("RunService").Stepped:Wait();
+					end;
+				until not ((connection.Connected) and (tick() < startTime + self.timeout));
+				self.listeners[id] = nil;
+				if (tick() >= startTime) and (connection.Connected) then
+					DebugWarn("(timeout) Disconnected CallPlayerAsync EventId", id);
+					connection:Disconnect();
+					reject("Request to client timed out");
+				end;
+			end);
+		end);
+	end);
+end;
+exports.default = NetServerAsyncFunction;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="19">
+              <Properties>
+                <string name="Name">ServerEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetServerEvent;
+local _0 = TS.import(script, script.Parent, "internal");
+local findOrCreateRemote, IS_CLIENT, t_assert = _0.findOrCreateRemote, _0.IS_CLIENT, _0.t_assert;
+local Players = game:GetService("Players");
+do
+	NetServerEvent = setmetatable({}, {
+		__tostring = function() return "NetServerEvent" end;
+	});
+	NetServerEvent.__index = NetServerEvent;
+	function NetServerEvent.new(...)
+		local self = setmetatable({}, NetServerEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetServerEvent:constructor(name, ...)
+		local recievedPropTypes = { ... };
+		self.instance = findOrCreateRemote("RemoteEvent", name);
+		assert(not (IS_CLIENT), "Cannot create a Net.ServerEvent on the Client!");
+		if #recievedPropTypes > 0 then
+			self.propTypes = recievedPropTypes;
+		end;
+	end;
+	-- static methods
+	function NetServerEvent:Unmanaged(name)
+		return findOrCreateRemote("RemoteEvent", name);
+	end;
+	function NetServerEvent:Group(list)
+		local map = {};
+		for key, value in pairs(list) do
+			if type(value) == "table" then
+				local item = NetServerEvent.new(key, unpack(TS.iterableCache(value[TS.Symbol_iterator](value))));
+				map[key] = item;
+			elseif type(value) == "boolean" then
+				map[key] = NetServerEvent.new(key);
+			elseif type(value) == "function" then
+				local event = NetServerEvent.new(key);
+				event:Connect(value);
+			end;
+		end;
+		return map;
+	end;
+	function NetServerEvent:PureReciever(name, cb, ...)
+		local recievedPropTypes = { ... };
+		local event = NetServerEvent.new(name, unpack(recievedPropTypes));
+		event:Connect(cb);
+		return event;
+	end;
+	function NetServerEvent:PureSender(name, ...)
+		local recievedPropTypes = { ... };
+		local event = NetServerEvent.new(name, unpack(recievedPropTypes));
+		return event;
+	end;
+	-- instance methods
+	function NetServerEvent:WithStrictCall(...)
+		local callPropTypes = { ... };
+		self.callTypes = callPropTypes;
+		return self;
+	end;
+	function NetServerEvent:GetInstance()
+		return self.instance;
+	end;
+	function NetServerEvent:GetEvent()
+		return self.instance.OnServerEvent;
+	end;
+	function NetServerEvent:Connect(callback)
+		if self.propTypes ~= nil then
+			return self:GetEvent():Connect(function(sourcePlayer, ...)
+				local args = { ... };
+				if t_assert(self.propTypes, args) then
+					callback(sourcePlayer, unpack(args));
+				end;
+			end);
+		else
+			return self:GetEvent():Connect(callback);
+		end;
+	end;
+	function NetServerEvent:SendToAllPlayers(...)
+		local args = { ... };
+		if self.callTypes ~= nil then
+			if not (t_assert(self.callTypes, args)) then
+				return nil;
+			end;
+		end;
+		self.instance:FireAllClients(unpack((args)));
+	end;
+	function NetServerEvent:SendToAllPlayersExcept(blacklist, ...)
+		local args = { ... };
+		if self.callTypes ~= nil then
+			if not (t_assert(self.callTypes, args)) then
+				return nil;
+			end;
+		end;
+		if typeof(blacklist) == "Instance" then
+			local otherPlayers = TS.array_filter(Players:GetPlayers(), function(p)
+				return p ~= blacklist;
+			end);
+			for _1 = 1, #otherPlayers do
+				local player = otherPlayers[_1];
+				self.instance:FireClient(player, unpack((args)));
+			end;
+		elseif type(blacklist) == "table" then
+			local _1 = Players:GetPlayers();
+			for _2 = 1, #_1 do
+				local player = _1[_2];
+				if (table.find(blacklist, player) or 0) - 1 == -1 then
+					self.instance:FireClient(player, unpack((args)));
+				end;
+			end;
+		end;
+	end;
+	function NetServerEvent:SendToPlayer(player, ...)
+		local args = { ... };
+		if self.callTypes ~= nil then
+			if not (t_assert(self.callTypes, args)) then
+				return nil;
+			end;
+		end;
+		self.instance:FireClient(player, unpack((args)));
+	end;
+	function NetServerEvent:SendToPlayers(players, ...)
+		local args = { ... };
+		if self.callTypes ~= nil then
+			if not (t_assert(self.callTypes, args)) then
+				return nil;
+			end;
+		end;
+		for _1 = 1, #players do
+			local player = players[_1];
+			self:SendToPlayer(player, unpack((args)));
+		end;
+	end;
+end;
+exports.default = NetServerEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="20">
+              <Properties>
+                <string name="Name">ServerFunction</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local _0 = TS.import(script, script.Parent, "internal");
+local findOrCreateRemote, IS_CLIENT, t_assert = _0.findOrCreateRemote, _0.IS_CLIENT, _0.t_assert;
+local NetServerFunction;
+do
+	NetServerFunction = setmetatable({}, {
+		__tostring = function() return "NetServerFunction" end;
+	});
+	NetServerFunction.__index = NetServerFunction;
+	function NetServerFunction.new(...)
+		local self = setmetatable({}, NetServerFunction);
+		self:constructor(...);
+		return self;
+	end;
+	function NetServerFunction:constructor(name, ...)
+		local recievedPropTypes = { ... };
+		self.instance = findOrCreateRemote("RemoteFunction", name);
+		assert(not (IS_CLIENT), "Cannot create a Net.ServerFunction on the Client!");
+		if #recievedPropTypes > 0 then
+			self.propTypes = recievedPropTypes;
+		end;
+	end;
+	-- static methods
+	function NetServerFunction:Unmanaged(name)
+		return findOrCreateRemote("RemoteFunction", name);
+	end;
+	-- instance methods
+	function NetServerFunction:GetCallback()
+		return self.instance.OnServerInvoke;
+	end;
+	function NetServerFunction:SetCallback(func)
+		if self.propTypes ~= nil then
+			self.instance.OnServerInvoke = function(player, ...)
+				local args = { ... };
+				if t_assert(self.propTypes, args) then
+					return func(player, unpack(args));
+				else
+					error("Client failed type checks", 2);
+				end;
+			end;
+		else
+			self.instance.OnServerInvoke = (func);
+		end;
+		return self;
+	end;
+	function NetServerFunction:GetInstance()
+		return self.instance;
+	end;
+	function NetServerFunction:GetClientCache()
+		local cache = self.instance:FindFirstChild("Cache");
+		if cache then
+			return cache.Value;
+		else
+			return 0;
+		end;
+	end;
+	function NetServerFunction:SetClientCache(time)
+		local cache = self.instance:FindFirstChild("Cache");
+		if not (cache) then
+			local cacheTimer = Instance.new("NumberValue", self.instance);
+			cacheTimer.Value = time;
+			cacheTimer.Name = "Cache";
+		else
+			cache.Value = time;
+		end;
+		return self;
+	end;
+end;
+exports.default = NetServerFunction;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="21">
+              <Properties>
+                <string name="Name">ServerThrottledEvent</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local NetServerEvent = TS.import(script, script.Parent, "ServerEvent").default;
+local errorft = TS.import(script, script.Parent, "internal").errorft;
+local throttler = TS.import(script, script.Parent, "Throttle");
+local GetConfiguration = TS.import(script, script.Parent, "configuration").GetConfiguration;
+local NetServerThrottledEvent;
+do
+	local super = NetServerEvent;
+	NetServerThrottledEvent = setmetatable({}, {
+		__index = super;
+		__tostring = function() return "NetServerThrottledEvent" end;
+	});
+	NetServerThrottledEvent.__index = NetServerThrottledEvent;
+	function NetServerThrottledEvent.new(...)
+		local self = setmetatable({}, NetServerThrottledEvent);
+		self:constructor(...);
+		return self;
+	end;
+	function NetServerThrottledEvent:constructor(name, rateLimit, ...)
+		local recievedPropTypes = { ... };
+		super.constructor(self, name, unpack(recievedPropTypes));
+		self.maxRequestsPerMinute = 0;
+		self.maxRequestsPerMinute = rateLimit;
+		self.clientRequests = throttler:Get("Event~" .. name);
+		local clientValue = Instance.new("IntValue", self.instance);
+		clientValue.Name = "RateLimit";
+		clientValue.Value = rateLimit;
+	end;
+	function NetServerThrottledEvent:Connect(callback)
+		return self.instance.OnServerEvent:Connect(function(player, ...)
+			local args = { ... };
+			local maxRequests = self.maxRequestsPerMinute;
+			local clientRequestCount = self.clientRequests:Get(player);
+			if clientRequestCount >= maxRequests then
+				errorft(GetConfiguration("ServerThrottleMessage"), {
+					player = player.UserId;
+					remote = self.instance.Name;
+					limit = maxRequests;
+				});
+			else
+				self.clientRequests:Increment(player);
+				callback(player, unpack((args)));
+			end;
+		end);
+	end;
+	function NetServerThrottledEvent:SetRateLimit(requestsPerMinute)
+		self.maxRequestsPerMinute = requestsPerMinute;
+		local clientValue = self.instance:FindFirstChild("RateLimit");
+		if clientValue then
+			clientValue.Value = requestsPerMinute;
+		else
+			clientValue = Instance.new("IntValue", self.instance);
+			clientValue.Name = "RateLimit";
+			clientValue.Value = requestsPerMinute;
+		end;
+	end;
+	function NetServerThrottledEvent:GetRateLimit()
+		return self.maxRequestsPerMinute;
+	end;
+end;
+exports.default = NetServerThrottledEvent;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="22">
+              <Properties>
+                <string name="Name">ServerThrottledFunction</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports = {};
+local errorft = TS.import(script, script.Parent, "internal").errorft;
+local throttler = TS.import(script, script.Parent, "Throttle");
+local GetConfiguration = TS.import(script, script.Parent, "configuration").GetConfiguration;
+local NetServerFunction = TS.import(script, script.Parent, "ServerFunction").default;
+local NetServerThrottledFunction;
+do
+	local super = NetServerFunction;
+	NetServerThrottledFunction = setmetatable({}, {
+		__index = super;
+		__tostring = function() return "NetServerThrottledFunction" end;
+	});
+	NetServerThrottledFunction.__index = NetServerThrottledFunction;
+	function NetServerThrottledFunction.new(...)
+		local self = setmetatable({}, NetServerThrottledFunction);
+		self:constructor(...);
+		return self;
+	end;
+	function NetServerThrottledFunction:constructor(name, rateLimit, ...)
+		local recievedPropTypes = { ... };
+		super.constructor(self, name, unpack(recievedPropTypes));
+		self.maxRequestsPerMinute = 0;
+		self.maxRequestsPerMinute = rateLimit;
+		self.clientRequests = throttler:Get("Function~" .. name);
+		local clientValue = Instance.new("IntValue", self.instance);
+		clientValue.Name = "RateLimit";
+		clientValue.Value = rateLimit;
+	end;
+	function NetServerThrottledFunction:SetCallback(callback)
+		self.instance.OnServerInvoke = function(player, ...)
+			local args = { ... };
+			local maxRequests = self.maxRequestsPerMinute;
+			local clientRequestCount = self.clientRequests:Get(player);
+			if clientRequestCount >= maxRequests then
+				errorft(GetConfiguration("ServerThrottleMessage"), {
+					player = player.UserId;
+					remote = self.instance.Name;
+					limit = maxRequests;
+				});
+			else
+				self.clientRequests:Increment(player);
+				return callback(player, unpack(args));
+			end;
+		end;
+		return self;
+	end;
+	function NetServerThrottledFunction:SetRateLimit(requestsPerMinute)
+		self.maxRequestsPerMinute = requestsPerMinute;
+		local clientValue = self.instance:FindFirstChild("RateLimit");
+		if clientValue then
+			clientValue.Value = requestsPerMinute;
+		else
+			clientValue = Instance.new("IntValue", self.instance);
+			clientValue.Name = "RateLimit";
+			clientValue.Value = requestsPerMinute;
+		end;
+	end;
+	function NetServerThrottledFunction:GetRateLimit()
+		return self.maxRequestsPerMinute;
+	end;
+	NetServerThrottledFunction.rates = {};
+end;
+exports.default = NetServerThrottledFunction;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="23">
+              <Properties>
+                <string name="Name">Throttle</string>
+                <string name="Source"><![CDATA[local Throttle = {
+	counters = {}
+}
+local RequestCounter = {}
+RequestCounter.__index = RequestCounter
+
+function RequestCounter.new()
+	local self = {
+		counter = {}
+	}
+
+	return setmetatable(self, RequestCounter)
+end
+
+function RequestCounter:Get(player)
+	local counter = self.counter
+	local playerQueue = counter[player.UserId]
+	return playerQueue or 0
+end
+
+function RequestCounter:Increment(player)
+	local counter = self.counter
+	local playerQueue = counter[player.UserId]
+
+	if not counter[player.UserId] then
+		counter[player.UserId] = 1
+	else
+		counter[player.UserId] = playerQueue + 1
+	end
+end
+
+function RequestCounter:__tostring()
+	return "RequestCounter"
+end
+
+function RequestCounter:ClearAll()
+	self.counter = {}
+end
+
+function Throttle:Get(name)
+	local existing = self.counters[name]
+	if (existing) then
+		return existing
+	else
+		local newCounter = RequestCounter.new()
+		self.counters[name] = newCounter
+		return newCounter
+	end
+end
+
+function Throttle:Clear()
+	for _, counter in pairs(self.counters) do
+		counter:ClearAll()
+	end
+end
+
+return Throttle
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="24">
+              <Properties>
+                <string name="Name">configuration</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local TS = _G[script];
+local exports;
+local NetConfig;
+local IS_CLIENT = TS.import(script, script.Parent, "internal").IS_CLIENT;
+local runService = game:GetService("RunService");
+local IS_SERVER = runService:IsServer();
+local throttleResetTimer = 60;
+local rateLimitReachedMessage = "Request limit exceeded ({limit}) by {player} via {remote}";
+NetConfig = NetConfig or {} do
+	local _0 = NetConfig;
+	_0.DebugEnabled = false;
+	local function SetClientConfiguration(key, value)
+		assert(IS_CLIENT, "Use SetConfiguration on the server!");
+		if key == "EnableDebugMessages" then
+			_0.DebugEnabled = value;
+		end;
+	end;
+	local function SetConfiguration(key, value)
+		assert(IS_SERVER, "Cannot set configuration on client!");
+		if key == "ServerThrottleResetTimer" then
+			throttleResetTimer = value;
+		elseif key == "ServerThrottleMessage" then
+			rateLimitReachedMessage = value;
+		elseif key == "EnableDebugMessages" then
+			_0.DebugEnabled = value;
+		end;
+	end;
+	local function GetConfiguration(key)
+		if key == "ServerThrottleResetTimer" then
+			assert(IS_SERVER, "ServerThrottleResetTimer is not used on the client!");
+			return throttleResetTimer;
+		elseif key == "ServerThrottleMessage" then
+			assert(IS_SERVER, "ServerThrottleMessage is not used on the client!");
+			return rateLimitReachedMessage;
+		elseif key == "EnableDebugMessages" then
+			return _0.DebugEnabled;
+		else
+			return nil;
+		end;
+	end;
+	local function DebugWarn(...)
+		local message = { ... };
+		if _0.DebugEnabled then
+			warn("[rbx-net-debug]", unpack(message));
+		end;
+	end;
+	local function DebugLog(...)
+		local message = { ... };
+		if _0.DebugEnabled then
+			print("[rbx-net-debug]", unpack(message));
+		end;
+	end;
+	_0.SetClientConfiguration = SetClientConfiguration;
+	_0.SetConfiguration = SetConfiguration;
+	_0.GetConfiguration = GetConfiguration;
+	_0.DebugWarn = DebugWarn;
+	_0.DebugLog = DebugLog;
+end;
+exports = NetConfig;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="25">
+              <Properties>
+                <string name="Name">internal</string>
+                <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
+-- May 2, 2020, 6:51 PM New Zealand Standard Time
+
+local exports = {};
+local replicatedStorage = game:GetService("ReplicatedStorage");
+local runService = game:GetService("RunService");
+local IS_SERVER = runService:IsServer();
+local _0 = __LEMUR__;
+local _1 = _0 and not (runService:IsServer());
+local IS_CLIENT = _1 or runService:IsClient();
+local MAX_CLIENT_WAITFORCHILD_TIMEOUT = 10;
+local function getGlobalRemote(name)
+	return "$" .. name;
+end;
+local function isLuaTable(value)
+	return (type(value) == "table");
+end;
+local REMOTES_FOLDER_NAME = "Remotes";
+local FUNCTIONS_FOLDER_NAME = "Functions";
+local EVENTS_FOLDER_NAME = "Events";
+local ASYNC_FUNCTIONS_FOLDER_NAME = "AsyncFunctions";
+local remoteFolder;
+local eventFolder;
+local functionFolder;
+local asyncFunctionFolder;
+local ServerTickFunctions = {};
+local function findOrCreateFolder(parent, name)
+	local folder = parent:FindFirstChild(name);
+	if folder then
+		return folder;
+	else
+		folder = Instance.new("Folder", parent);
+		folder.Name = name;
+		return folder;
+	end;
+end;
+remoteFolder = findOrCreateFolder(replicatedStorage, REMOTES_FOLDER_NAME);
+functionFolder = findOrCreateFolder(remoteFolder, FUNCTIONS_FOLDER_NAME);
+eventFolder = findOrCreateFolder(remoteFolder, EVENTS_FOLDER_NAME);
+asyncFunctionFolder = findOrCreateFolder(remoteFolder, ASYNC_FUNCTIONS_FOLDER_NAME);
+local function errorft(message, vars)
+	message = string.gsub(message, "{([%w_][%w%d_]*)}", function(token)
+		local _2 = vars[token];
+		return (_2 ~= 0 and _2 == _2 and _2 ~= "" and _2) or token;
+	end);
+	error(message, 2);
+end;
+local function eventExists(name)
+	return eventFolder:FindFirstChild(name) ~= nil;
+end;
+local function functionExists(name)
+	return functionFolder:FindFirstChild(name) ~= nil;
+end;
+local function waitForEvent(name, timeOut)
+	return eventFolder:WaitForChild(name, timeOut);
+end;
+local function waitForFunction(name, timeOut)
+	return functionFolder:WaitForChild(name, timeOut);
+end;
+local function getRemoteFolder(remoteType)
+	local targetFolder;
+	if remoteType == "RemoteEvent" then
+		targetFolder = eventFolder;
+	elseif remoteType == "RemoteFunction" then
+		targetFolder = functionFolder;
+	elseif remoteType == "AsyncRemoteFunction" then
+		targetFolder = asyncFunctionFolder;
+	else
+		return error("Invalid type: " .. remoteType);
+	end;
+	return targetFolder;
+end;
+local function findRemote(remoteType, name)
+	local targetFolder = getRemoteFolder(remoteType);
+	local existing = targetFolder:FindFirstChild(name);
+	return existing;
+end;
+local function getRemoteOrThrow(remoteType, name)
+	local existing = findRemote(remoteType, name);
+	if existing then
+		return existing;
+	else
+		error("Could not find Remote of type " .. remoteType .. " called \"" .. name .. "\"");
+	end;
+end;
+local function findOrCreateRemote(remoteType, name)
+	local existing = findRemote(remoteType, name);
+	if existing then
+		return existing;
+	else
+		if not (IS_SERVER) then
+			error("Creation of Events or Functions must be done on server!");
+		end;
+		local remote;
+		if remoteType == "RemoteEvent" then
+			remote = Instance.new("RemoteEvent");
+		elseif remoteType == "AsyncRemoteFunction" then
+			remote = Instance.new("RemoteEvent");
+		elseif remoteType == "RemoteFunction" then
+			remote = Instance.new("RemoteFunction");
+		else
+			error("Invalid Remote Type: " .. remoteType);
+		end;
+		remote.Name = name;
+		remote.Parent = getRemoteFolder(remoteType);
+		return remote;
+	end;
+end;
+local function t_assert(types, args)
+	if args == nil then
+		warn("[net-types] Argument length is zero");
+		return false;
+	end;
+	do
+		local i = 0;
+		while i < #types do
+			local typeCheck = types[i + 1];
+			local value = args[i + 1];
+			if not (typeCheck(value)) then
+				warn("[net-types] Argument at index " .. tostring(i) .. " was invalid type.");
+				return false;
+			end;
+			i = i + 1;
+		end;
+	end;
+	return true;
+end;
+if IS_SERVER then
+	game:GetService("RunService").Stepped:Connect(function(time, step)
+		for _2 = 1, #ServerTickFunctions do
+			local f = ServerTickFunctions[_2];
+			f();
+		end;
+	end);
+end;
+exports.IS_SERVER = IS_SERVER;
+exports.IS_CLIENT = IS_CLIENT;
+exports.MAX_CLIENT_WAITFORCHILD_TIMEOUT = MAX_CLIENT_WAITFORCHILD_TIMEOUT;
+exports.getGlobalRemote = getGlobalRemote;
+exports.isLuaTable = isLuaTable;
+exports.ServerTickFunctions = ServerTickFunctions;
+exports.findOrCreateFolder = findOrCreateFolder;
+exports.errorft = errorft;
+exports.eventExists = eventExists;
+exports.functionExists = functionExists;
+exports.waitForEvent = waitForEvent;
+exports.waitForFunction = waitForFunction;
+exports.getRemoteFolder = getRemoteFolder;
+exports.findRemote = findRemote;
+exports.getRemoteOrThrow = getRemoteOrThrow;
+exports.findOrCreateRemote = findOrCreateRemote;
+exports.t_assert = t_assert;
+return exports;
+]]></string>
+              </Properties>
+            </Item>
+            <Item class="ModuleScript" referent="26">
+              <Properties>
+                <string name="Name">utility</string>
+                <string name="Source"><![CDATA[local function isMixedTable(value)
+	if type(value) ~= "table" then
+		return false
+	end
+
+	local num = #value
+
+	if num > 0 then
+		-- This should always grab any non-numeric keys
+		local lastIndex = next(value, #num)
+		if lastIndex ~= nil then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function isNetworkMap(value)
+	for key in pairs(value) do
+		if type(key) ~= "string" then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function isNetworkTable(value)
+	if type(value) ~= "table" then
+		return false
+	end
+
+	return getmetatable(value) == nil and not isMixedTable(value)
+end
+
+local function isValidInstance(value)
+	return typeof(value) == "Instance" and value:IsDescendantOf(game)
+end
+
+local function isNetworkValue(value)
+	return type(value) == "string" or type(value) == "number" or type(value) == "boolean" or isNetworkTable(value) or
+		isValidInstance(value)
+end
+
+return {
+	IsNetworkTable = isNetworkTable,
+	IsNetworkValue = isNetworkValue,
+	IsNetworkMap = isNetworkMap
+}
+]]></string>
+              </Properties>
+            </Item>
+          </Item>
+        </Item>
+        <Item class="Folder" referent="27">
+          <Properties>
+            <string name="Name">types</string>
+          </Properties>
+          <Item class="Folder" referent="28">
+            <Properties>
+              <string name="Name">include</string>
+            </Properties>
+            <Item class="Folder" referent="29">
+              <Properties>
+                <string name="Name">generated</string>
+              </Properties>
+            </Item>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="ServerScriptService" referent="30">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Folder" referent="31">
+      <Properties>
+        <string name="Name">TS</string>
+      </Properties>
+      <Item class="ModuleScript" referent="32">
+        <Properties>
+          <string name="Name">BedrockBlockState</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState;
+local BedrockBlockState;
+do
+	local super = BlockState;
+	BedrockBlockState = setmetatable({}, {
+		__index = super;
+		__tostring = function() return "BedrockBlockState" end;
+	});
+	BedrockBlockState.__index = BedrockBlockState;
+	function BedrockBlockState.new(...)
+		local self = setmetatable({}, BedrockBlockState);
+		self:constructor(...);
+		return self;
+	end;
+	function BedrockBlockState:constructor(...)
+		super.constructor(self, ...);
+		self.unbreakable = true;
+	end;
+end;
+exports.BedrockBlockState = BedrockBlockState;
+return exports;
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="33">
+        <Properties>
+          <string name="Name">BlockState</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local TextureHandler = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "TextureHandler").default;
+local BlockState;
+do
+	BlockState = setmetatable({}, {
+		__tostring = function() return "BlockState" end;
+	});
+	BlockState.__index = BlockState;
+	function BlockState.new(...)
+		local self = setmetatable({}, BlockState);
+		self:constructor(...);
+		return self;
+	end;
+	function BlockState:constructor(...)
+		self.id = "generic";
+		self.position = Vector3.new(0, 0, 0);
+		self.block = Instance.new("Part");
+		self.blockData = {};
+		self.interactable = false;
+		self.unbreakable = false;
+	end;
+	function BlockState:getRealPosition()
+		return (self.position * (globals.blockSize));
+	end;
+	function BlockState:createBlock()
+		self.block = Instance.new("Part");
+		self.block.Position = self:getRealPosition();
+		self.block.Size = globals.blockSize;
+		self.block.Anchored = true;
+		self.block.Material = Enum.Material.SmoothPlastic;
+		self.block.TopSurface = Enum.SurfaceType.Smooth;
+		self.block.BottomSurface = Enum.SurfaceType.Smooth;
+		TextureHandler.applyTexture(self);
+		self.block.Parent = game.Workspace:FindFirstChild("Blocks");
+	end;
+	function BlockState:destroyBlock()
+		if self.block then
+			self.block:Destroy();
+			self.block = Instance.new("Part");
+		end;
+	end;
+	function BlockState:interact(player, face)
+	end;
+end;
+exports.BlockState = BlockState;
+return exports;
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="34">
+        <Properties>
+          <string name="Name">Blocks</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState;
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local Net = TS.import(script, TS.getModule(script, "net").out);
+local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable;
+local BedrockBlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BedrockBlockState").BedrockBlockState;
+local evtInteract = Net.CreateEvent("InteractBlock");
+local evtDestroy = Net.CreateEvent("DestroyBlock");
+local BlockData;
+do
+	BlockData = setmetatable({}, {
+		__tostring = function() return "BlockData" end;
+	});
+	BlockData.__index = BlockData;
+	function BlockData.new(...)
+		local self = setmetatable({}, BlockData);
+		self:constructor(...);
+		return self;
+	end;
+	function BlockData:constructor(_position, _id, _blockData)
+		self.position = Vector3.new(0, 0, 0);
+		self.id = "generic";
+		self.blockData = nil;
+		self.position = _position;
+		self.id = _id;
+		self.blockData = _blockData;
+	end;
+end;
+local blocks = {};
+local function getCorrectBlockState(id)
+	local _0 = id;
+	repeat
+		if _0 == "obsidian" then
+			return BedrockBlockState;
+		end;
+		return BlockState;
+	until true;
+end;
+local function createBlock(position, id, blockData)
+	local newBlockState = getCorrectBlockState(id).new();
+	newBlockState.position = position;
+	newBlockState.id = id;
+	newBlockState.blockData = blockData;
+	newBlockState:createBlock();
+	blocks[tostring(position.X) .. "," .. tostring(position.Y) .. "," .. tostring(position.Z)] = newBlockState;
+end;
+local function createBlocksFromArray(blocks)
+	TS.array_forEach(blocks, function(block)
+		createBlock(block.position, block.id, block.blockData);
+	end);
+end;
+local function fill(startPos, endPos, block, blockData)
+	do
+		local x = startPos.X;
+		while x <= endPos.X do
+			do
+				local y = startPos.Y;
+				while y <= endPos.Y do
+					do
+						local z = startPos.Z;
+						while z <= endPos.Z do
+							createBlock(Vector3.new(x, y, z), block, blockData);
+							if startPos.Z - endPos.Z == 0 then
+								break;
+							end;
+							z = z + 1;
+						end;
+					end;
+					if startPos.Y - endPos.Y == 0 then
+						break;
+					end;
+					y = y + 1;
+				end;
+			end;
+			if startPos.X - endPos.X == 0 then
+				break;
+			end;
+			x = x + 1;
+		end;
+	end;
+end;
+local function placeBlockFromOtherBlock(player, blockPosition, face, chosenBlock)
+	local newBlockPos = blockPosition;
+	local block = chosenBlock;
+	local _0 = face;
+	repeat
+		if _0 == Enum.NormalId.Back then
+			newBlockPos = (blockPosition + (Vector3.new(0, 0, 1)));
+			break;
+		end;
+		if _0 == Enum.NormalId.Bottom then
+			newBlockPos = (blockPosition + (Vector3.new(0, -1, 0)));
+			break;
+		end;
+		if _0 == Enum.NormalId.Top then
+			newBlockPos = (blockPosition + (Vector3.new(0, 1, 0)));
+			break;
+		end;
+		if _0 == Enum.NormalId.Front then
+			newBlockPos = (blockPosition + (Vector3.new(0, 0, -1)));
+			break;
+		end;
+		if _0 == Enum.NormalId.Left then
+			newBlockPos = (blockPosition + (Vector3.new(-1, 0, 0)));
+			break;
+		end;
+		if _0 == Enum.NormalId.Right then
+			newBlockPos = (blockPosition + (Vector3.new(1, 0, 0)));
+			break;
+		end;
+		error("Invalid Enum in placeBlockFromOtherBlock!!!!!!!");
+	until true;
+	print("New block position is " .. newBlockPos.X .. "," .. newBlockPos.Y .. "," .. newBlockPos.Z);
+	if not (blocks[tostring(newBlockPos.X) .. "," .. tostring(newBlockPos.Y) .. "," .. tostring(newBlockPos.Z)]) then
+		print("Creating block as " .. block);
+		createBlock(newBlockPos, block);
+	end;
+end;
+local function interactCheck(player, block)
+	if player.Character then
+		local head = player.Character:WaitForChild("Head");
+		if head then
+			if typeof(block) == "Instance" then
+				if block.ClassName == "Part" then
+					if isBlockReachable(block.Position, head.Position) then
+						local dividedPos = (block.Position / (globals.blockSize));
+						local clickedOnBlock = blocks[tostring(dividedPos.X) .. "," .. tostring(dividedPos.Y) .. "," .. tostring(dividedPos.Z)];
+						if clickedOnBlock then
+							return { clickedOnBlock, true };
+						else
+							print("Clicked on block doesn't exist. Maybe exploits?");
+						end;
+					end;
+				end;
+			end;
+		end;
+	end;
+	return { nil, false };
+end;
+evtInteract:Connect(function(player, blockUnknown, blockFace, chosenBlock)
+	local face = blockFace;
+	local block = blockUnknown;
+	local _0 = interactCheck(player, block);
+	local clickedOnBlock = _0[1];
+	local interactCheckResult = _0[2];
+	if interactCheckResult and clickedOnBlock then
+		if clickedOnBlock.interactable then
+			print("Interacted block is interactable. Interacting instead of placing");
+			clickedOnBlock:interact(player, face);
+		end;
+		print("Placing Block");
+		placeBlockFromOtherBlock(player, clickedOnBlock.position, face, chosenBlock);
+	end;
+end);
+local function deleteBlock(block)
+	if blocks[tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)] == nil then
+		warn("Deleting a block that doesn't exist in blocks list. There's an issue here. Proceeding anyways.");
+	end;
+	block:destroyBlock();
+	blocks[tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)] = nil;
+end;
+evtDestroy:Connect(function(player, blockUnknown)
+	local block = blockUnknown;
+	local _0 = interactCheck(player, block);
+	local clickedOnBlock = _0[1];
+	local interactCheckResult = _0[2];
+	if interactCheckResult and clickedOnBlock then
+		if not (clickedOnBlock.unbreakable) then
+			deleteBlock(clickedOnBlock);
+		end;
+	end;
+end);
+local Blocks = {
+	blocks = blocks;
+	createBlock = createBlock;
+	deleteBlock = deleteBlock;
+	fill = fill;
+	placeBlockFromOtherBlock = placeBlockFromOtherBlock;
+	createBlocksFromArray = createBlocksFromArray;
+	getCorrectBlockState = getCorrectBlockState;
+};
+exports.Blocks, exports.BlockData = Blocks, BlockData;
+return exports;
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Script" referent="35">
+        <Properties>
+          <string name="Name">Main</string>
+          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local startGeneration, onGenerationEnd;
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
+local SimplexGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "SimplexGen").SimplexGenerateChunk;
+local Net = TS.import(script, TS.getModule(script, "net").out);
+local FlatIslandGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "FlatIslandGen").FlatIslandGenerateChunk;
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local OpenGui = Net.CreateEvent("OpenGui");
+local CloseGui = Net.CreateEvent("CloseGui");
+local WGSelection = Net.CreateEvent("WGSelection");
+print("[Info]: ServerMain");
+local generator = "";
+local function createChunk(cx, cy)
+	local _0 = generator;
+	repeat
+		if _0 == "Simplex" then
+			SimplexGenerateChunk(cx, cy);
+			break;
+		end;
+		if _0 == "FlatIsland" then
+			FlatIslandGenerateChunk(cx, cy);
+			break;
+		end;
+		if _0 == "Plane" then
+			Blocks.fill(Vector3.new(globals.chunkSize.X * cx, 0, globals.chunkSize.Y * cy), Vector3.new((globals.chunkSize.X * cx) + globals.chunkSize.X, 0, (globals.chunkSize.Y * cy) + globals.chunkSize.Y), "obsidian");
+			break;
+		end;
+	until true;
+	wait();
+end;
+game:GetService("Players").CharacterAutoLoads = false;
+local firstJoiningPlayer;
+local alreadySetFirstPlayer = false;
+game:GetService("Players").PlayerAdded:Connect(function(player)
+	if not (alreadySetFirstPlayer) then
+		firstJoiningPlayer = player;
+		print("First player is", player.Name);
+		OpenGui:SendToPlayer(player, "WGS");
+		alreadySetFirstPlayer = true;
+	end;
+end);
+WGSelection:Connect(function(plr, Generator)
+	if plr.Name == firstJoiningPlayer.Name then
+		generator = Generator;
+		print("[Info]: User chose " .. generator .. "generator.");
+		startGeneration();
+	else
+		warn("[Warn]: Player that is not first player has selected a WorldGen. Ignoring");
+	end;
+end);
+function startGeneration()
+	createChunk(0, 0);
+	createChunk(0, 1);
+	createChunk(-1, 0);
+	createChunk(-1, 1);
+	createChunk(1, 0);
+	createChunk(1, 1);
+	createChunk(-1, -1);
+	createChunk(0, -1);
+	createChunk(1, -1);
+	onGenerationEnd();
+end;
+function onGenerationEnd()
+	local c = 0;
+	TS.map_forEach(Blocks.blocks, function()
+		c = c + 1;
+	end);
+	print(c, "blocks created");
+	game:GetService("Players").CharacterAutoLoads = true;
+	TS.array_forEach(game:GetService("Players"):GetChildren(), function(player)
+		player:LoadCharacter();
+	end);
+	CloseGui:SendToPlayer(firstJoiningPlayer, "WGS");
+end;
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Folder" referent="36">
+        <Properties>
+          <string name="Name">WorldGen</string>
+        </Properties>
+        <Item class="ModuleScript" referent="37">
+          <Properties>
+            <string name="Name">FlatIslandGen</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local function FlatIslandGenerateChunk(cx, cy)
+	do
+		local x = 0 + (globals.chunkSize.X * cx);
+		while x < globals.chunkSize.X + (globals.chunkSize.X * cx) do
+			do
+				local z = 0 + (globals.chunkSize.Y * cy);
+				while z < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
+					local ypos = math.floor(globals.primaryGenerationHeight / 2);
+					Blocks.createBlock(Vector3.new(x, ypos, z), "grass");
+					local i = ypos - 1;
+					while i > ypos - math.floor(globals.dirtToStoneHeight / 2) do
+						Blocks.createBlock(Vector3.new(x, i, z), "dirt");
+						i = i - 1;
+					end;
+					while i > 0 do
+						Blocks.createBlock(Vector3.new(x, i, z), "stone");
+						i = i - 1;
+					end;
+					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian");
+					z = z + 1;
+				end;
+			end;
+			x = x + 1;
+		end;
+	end;
+end;
+exports.FlatIslandGenerateChunk = FlatIslandGenerateChunk;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="38">
+          <Properties>
+            <string name="Name">Simplex</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local SimplexNoise;
+do
+	SimplexNoise = setmetatable({}, {
+		__tostring = function() return "SimplexNoise" end;
+	});
+	SimplexNoise.__index = SimplexNoise;
+	function SimplexNoise.new(...)
+		local self = setmetatable({}, SimplexNoise);
+		self:constructor(...);
+		return self;
+	end;
+	function SimplexNoise:constructor()
+		local r = math;
+		self.grad3 = { { 1, 1, 0 }, { -1, 1, 0 }, { 1, -1, 0 }, { -1, -1, 0 }, { 1, 0, 1 }, { -1, 0, 1 }, { 1, 0, -1 }, { -1, 0, -1 }, { 0, 1, 1 }, { 0, -1, 1 }, { 0, 1, -1 }, { 0, -1, -1 } };
+		self.p = {};
+		do
+			local i = 0;
+			while i < 256 do
+				local _0 = self.p;
+				_0[i + 1] = math.floor(r.random() * 256);
+				i = i + 1;
+			end;
+		end;
+		self.perm = {};
+		do
+			local i = 0;
+			while i < 512 do
+				local _0 = self.perm;
+				_0[i + 1] = self.p[bit32.band(i, 255) + 1];
+				i = i + 1;
+			end;
+		end;
+		self.simplex = { { 0, 1, 2, 3 }, { 0, 1, 3, 2 }, { 0, 0, 0, 0 }, { 0, 2, 3, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 3, 0 }, { 0, 2, 1, 3 }, { 0, 0, 0, 0 }, { 0, 3, 1, 2 }, { 0, 3, 2, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 3, 2, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 0, 3 }, { 0, 0, 0, 0 }, { 1, 3, 0, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 3, 0, 1 }, { 2, 3, 1, 0 }, { 1, 0, 2, 3 }, { 1, 0, 3, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 3, 1 }, { 0, 0, 0, 0 }, { 2, 1, 3, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 1, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 0, 1, 2 }, { 3, 0, 2, 1 }, { 0, 0, 0, 0 }, { 3, 1, 2, 0 }, { 2, 1, 0, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 1, 0, 2 }, { 0, 0, 0, 0 }, { 3, 2, 0, 1 }, { 3, 2, 1, 0 } };
+	end;
+	function SimplexNoise:dot(g, x, y)
+		return g[1] * x + g[2] * y;
+	end;
+	function SimplexNoise:noise(xin, yin)
+		local n0;
+		local n1;
+		local n2;
+		local F2 = 0.5 * (math.sqrt(3.0) - 1.0);
+		local s = (xin + yin) * F2;
+		local i = math.floor(xin + s);
+		local j = math.floor(yin + s);
+		local G2 = (3.0 - math.sqrt(3.0)) / 6.0;
+		local t = (i + j) * G2;
+		local X0 = i - t;
+		local Y0 = j - t;
+		local x0 = xin - X0;
+		local y0 = yin - Y0;
+		local i1;
+		local j1;
+		if x0 > y0 then
+			i1 = 1;
+			j1 = 0;
+		else
+			i1 = 0;
+			j1 = 1;
+		end;
+		local x1 = x0 - i1 + G2;
+		local y1 = y0 - j1 + G2;
+		local x2 = x0 - 1.0 + 2.0 * G2;
+		local y2 = y0 - 1.0 + 2.0 * G2;
+		local ii = bit32.band(i, 255);
+		local jj = bit32.band(j, 255);
+		local gi0 = self.perm[ii + self.perm[jj + 1] + 1] % 12;
+		local gi1 = self.perm[ii + i1 + self.perm[jj + j1 + 1] + 1] % 12;
+		local gi2 = self.perm[ii + 1 + self.perm[jj + 1 + 1] + 1] % 12;
+		local t0 = 0.5 - x0 * x0 - y0 * y0;
+		if t0 < 0 then
+			n0 = 0.0;
+		else
+			t0 = t0 * (t0);
+			n0 = t0 * t0 * self:dot(self.grad3[gi0 + 1], x0, y0);
+		end;
+		local t1 = 0.5 - x1 * x1 - y1 * y1;
+		if t1 < 0 then
+			n1 = 0.0;
+		else
+			t1 = t1 * (t1);
+			n1 = t1 * t1 * self:dot(self.grad3[gi1 + 1], x1, y1);
+		end;
+		local t2 = 0.5 - x2 * x2 - y2 * y2;
+		if t2 < 0 then
+			n2 = 0.0;
+		else
+			t2 = t2 * (t2);
+			n2 = t2 * t2 * self:dot(self.grad3[gi2 + 1], x2, y2);
+		end;
+		return 70.0 * (n0 + n1 + n2);
+	end;
+end;
+exports.SimplexNoise = SimplexNoise;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="39">
+          <Properties>
+            <string name="Name">SimplexGen</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
+local SimplexNoise = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "Simplex").SimplexNoise;
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local simplex = SimplexNoise.new();
+local function SimplexGenerateChunk(cx, cy)
+	do
+		local x = 0 + (globals.chunkSize.X * cx);
+		while x < globals.chunkSize.X + (globals.chunkSize.X * cx) do
+			do
+				local z = 0 + (globals.chunkSize.Y * cy);
+				while z < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
+					local ypos = math.floor(simplex:noise(x / globals.simplexNoiseDividend, z / globals.simplexNoiseDividend) * globals.simplexNoiseScale) + globals.primaryGenerationHeight;
+					Blocks.createBlock(Vector3.new(x, ypos, z), "grass");
+					local i = ypos - 1;
+					while i > ypos - globals.dirtToStoneHeight do
+						Blocks.createBlock(Vector3.new(x, i, z), "dirt");
+						i = i - 1;
+					end;
+					while i > 0 do
+						Blocks.createBlock(Vector3.new(x, i, z), "stone");
+						i = i - 1;
+					end;
+					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian");
+					z = z + 1;
+				end;
+			end;
+			x = x + 1;
+		end;
+	end;
+	wait();
+end;
+exports.SimplexGenerateChunk = SimplexGenerateChunk;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+      <Item class="Folder" referent="40">
+        <Properties>
+          <string name="Name">textures</string>
+        </Properties>
+        <Item class="ModuleScript" referent="41">
+          <Properties>
+            <string name="Name">Generic4Side1Top1Bottom</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local exports = {};
+local function createTexture(assetId, side)
+	local texture = Instance.new("Decal");
+	texture.Face = side;
+	texture.Texture = assetId;
+	return texture;
+end;
+local function Generic4Side1Top1Bottom(block, textureSide, textureTop, textureBottom)
+	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block;
+	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block;
+	createTexture(textureBottom, Enum.NormalId.Bottom).Parent = block.block;
+end;
+exports.Generic4Side1Top1Bottom = Generic4Side1Top1Bottom;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="42">
+          <Properties>
+            <string name="Name">Generic5Side1Top</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local exports = {};
+local function createTexture(assetId, side)
+	local texture = Instance.new("Decal");
+	texture.Face = side;
+	texture.Texture = assetId;
+	return texture;
+end;
+local function Generic5Side1Top(block, textureSide, textureTop)
+	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block;
+	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block;
+	createTexture(textureSide, Enum.NormalId.Bottom).Parent = block.block;
+end;
+exports.Generic5Side1Top = Generic5Side1Top;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="43">
+          <Properties>
+            <string name="Name">Generic6Side</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local exports = {};
+local function createTexture(assetId, side)
+	local texture = Instance.new("Decal");
+	texture.Face = side;
+	texture.Texture = assetId;
+	return texture;
+end;
+local function Generic6Side(block, texture)
+	createTexture(texture, Enum.NormalId.Back).Parent = block.block;
+	createTexture(texture, Enum.NormalId.Top).Parent = block.block;
+	createTexture(texture, Enum.NormalId.Left).Parent = block.block;
+	createTexture(texture, Enum.NormalId.Front).Parent = block.block;
+	createTexture(texture, Enum.NormalId.Right).Parent = block.block;
+	createTexture(texture, Enum.NormalId.Bottom).Parent = block.block;
+end;
+exports.Generic6Side = Generic6Side;
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="44">
+          <Properties>
+            <string name="Name">TextureHandler</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local Generic6Side = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic6Side").Generic6Side;
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+local Generic4Side1Top1Bottom = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic4Side1Top1Bottom").Generic4Side1Top1Bottom;
+local function randomRotate(block, rotateOnX, rotateOnY, rotateOnZ)
+	local possibleRotations = { 0, 90, 180, 270 };
+	if rotateOnX then
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
+		block.block.Orientation = (block.block.Orientation + (Vector3.new(rotation, 0, 0)));
+	end;
+	if rotateOnY then
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
+		block.block.Orientation = (block.block.Orientation + (Vector3.new(0, rotation, 0)));
+	end;
+	if rotateOnZ then
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
+		block.block.Orientation = (block.block.Orientation + (Vector3.new(0, 0, rotation)));
+	end;
+end;
+local function applyTexture(block)
+	local _0 = block.id;
+	repeat
+		if _0 == "grass" then
+			Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt);
+			break;
+		end;
+		if _0 == "dirt" then
+			Generic6Side(block, globals.textures.dirt);
+			break;
+		end;
+		if _0 == "stone" then
+			Generic6Side(block, globals.textures.stone);
+			break;
+		end;
+		if _0 == "brick" then
+			Generic6Side(block, globals.textures.brick);
+			break;
+		end;
+		if _0 == "obsidian" then
+			Generic6Side(block, globals.textures.obsidian);
+			break;
+		end;
+		Generic6Side(block, globals.textures.grid);
+		break;
+	until true;
+end;
+exports.default = {
+	applyTexture = applyTexture;
+};
+return exports;
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="45">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="46">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="Folder" referent="47">
+        <Properties>
+          <string name="Name">TS</string>
+        </Properties>
+        <Item class="LocalScript" referent="48">
+          <Properties>
+            <string name="Name">Main</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local initalizeAllGuis = TS.import(script, script.Parent, "gui", "Gui").initalizeAllGuis;
+print("[Info]: ClientMain");
+initalizeAllGuis();
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="LocalScript" referent="49">
+          <Properties>
+            <string name="Name">PlacingBreaking</string>
+            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable;
+local Net = TS.import(script, TS.getModule(script, "net").out);
+local Players = game:GetService("Players");
+local UIS = game:GetService("UserInputService");
+local player = Players.LocalPlayer;
+local mouse = Players.LocalPlayer:GetMouse();
+local hoveredOnBlock;
+local hoveredFace;
+local selectedBlock = "grass";
+local startHover = TS.async(function(block)
+	local function enableHoverEffect(part)
+		local children = part:GetChildren();
+		TS.array_every(children, function(child, index, array)
+			if (child.ClassName == "Texture") or (child.ClassName == "Decal") then
+				local childTexture = child;
+				childTexture.Transparency = 0.2;
+			end;
+			return true;
+		end);
+	end;
+	local function disableHoverEffect(part)
+		local children = part:GetChildren();
+		TS.array_every(children, function(child, index, array)
+			if (child.ClassName == "Texture") or (child.ClassName == "Decal") then
+				local childTexture = child;
+				childTexture.Transparency = 0;
+			end;
+			return true;
+		end);
+	end;
+	enableHoverEffect(block);
+	hoveredOnBlock = block;
+	hoveredFace = mouse.TargetSurface;
+	while true do
+		if mouse.Target ~= block then
+			disableHoverEffect(block);
+			hoveredOnBlock = nil;
+			return nil;
+		end;
+		wait(0.05);
+	end;
+end);
+player.CharacterAdded:Connect(function()
+	if player.Character then
+		local head = player.Character:WaitForChild("Head", 30);
+		if head then
+			while true do
+				if (mouse.Target) and (isBlockReachable(mouse.Target.Position, head.Position)) and (mouse.Target.ClassName == "Part") and (mouse.Target.Parent == game.Workspace:WaitForChild("Blocks")) then
+					startHover(mouse.Target);
+				end;
+				wait();
+			end;
+		end;
+	end;
+end);
+mouse.Button2Down:Connect(function()
+	if hoveredOnBlock then
+		Net.WaitForClientEventAsync("InteractBlock"):andThen(function(event)
+			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
+		end);
+	end;
+end);
+mouse.Button1Down:Connect(function()
+	if hoveredOnBlock then
+		Net.WaitForClientEventAsync("DestroyBlock"):andThen(function(event)
+			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
+		end);
+	end;
+end);
+UIS.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		local _0 = input.KeyCode;
+		repeat
+			if _0 == Enum.KeyCode.One then
+				selectedBlock = "generic";
+				break;
+			end;
+			if _0 == Enum.KeyCode.Two then
+				selectedBlock = "grass";
+				break;
+			end;
+			if _0 == Enum.KeyCode.Three then
+				selectedBlock = "dirt";
+				break;
+			end;
+			if _0 == Enum.KeyCode.Four then
+				selectedBlock = "stone";
+				break;
+			end;
+			if _0 == Enum.KeyCode.Five then
+				selectedBlock = "brick";
+				break;
+			end;
+		until true;
+	end;
+end);
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="Folder" referent="50">
+          <Properties>
+            <string name="Name">gui</string>
+          </Properties>
+          <Item class="ModuleScript" referent="51">
+            <Properties>
+              <string name="Name">DebugGui</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local _0 = TS.import(script, script.Parent, "GuiLib");
+local createScreenGui, Gui = _0.createScreenGui, _0.Gui;
+local UITable = TS.import(script, script.Parent, "GuiExtension").UITable;
+local function DebugGui(plrGui)
+	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 300, 0, 300), "Debug", true, true);
+	local guiTestBtn = gui:createGuiButton(gui.mainContainer, "TestButton", nil, UDim2.new(0, 0, 0, 0), nil, "Button");
+	local guiTestLabel = gui:createGuiLabel(guiTestBtn, "Label", UDim2.new(1, 0, 1, 0), UDim2.new(1, 5, 0, 0), nil, "Label");
+	guiTestLabel.TextXAlignment = Enum.TextXAlignment.Left;
+	local clickCounter = 0;
+	guiTestBtn.MouseButton1Click:Connect(function()
+		clickCounter = clickCounter + (1);
+		guiTestLabel.Text = "The button has been clicked " .. tostring(clickCounter) .. " times!";
+		guiTestBtn.Text = tostring(clickCounter);
+	end);
+	local uiTable = UITable.new(gui, gui.mainContainer, { "Column 1", "Column 2", "Column 3" }, UDim2.new(0.9, 0, 0.5, 0), UDim2.new(0.05, 0, 0.4, 0));
+	uiTable:addRow(0, { "lol", "lol but better", "not lol" });
+	uiTable:addRow(1, { "bruh", "bruh", "bruh faster" });
+	uiTable:addRow(2, { "secret", "super secret", "very secret" });
+	uiTable:addRow(3, { "clear", "clear", "super clear" });
+	uiTable.onRowSelect = function(row)
+		local _1 = row;
+		repeat
+			if _1 == 0 then
+				guiTestLabel.Text = "lol row";
+				break;
+			end;
+			if _1 == 1 then
+				guiTestLabel.Text = "bruh row";
+				break;
+			end;
+			if _1 == 2 then
+				guiTestLabel.Text = "Super secret!!";
+				uiTable:removeRow(2);
+				break;
+			end;
+			if _1 == 3 then
+				guiTestLabel.Text = "Destroyed!!!!";
+				uiTable:clearChart();
+				break;
+			end;
+		until true;
+	end;
+	return gui;
+end;
+exports.default = DebugGui;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="52">
+            <Properties>
+              <string name="Name">DraggableObject</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local UserInputService = game:GetService("UserInputService");
+local DraggableObject;
+do
+	DraggableObject = setmetatable({}, {
+		__tostring = function() return "DraggableObject" end;
+	});
+	DraggableObject.__index = DraggableObject;
+	function DraggableObject.new(...)
+		local self = setmetatable({}, DraggableObject);
+		self:constructor(...);
+		return self;
+	end;
+	function DraggableObject:constructor(Object, ActuallyDragThis, dragInX, dragInY, resizeInstead)
+		if dragInX == nil then dragInX = true; end;
+		if dragInY == nil then dragInY = true; end;
+		if resizeInstead == nil then resizeInstead = false; end;
+		self.Dragging = false;
+		self.Object = Object;
+		self.ActuallyDragThis = ActuallyDragThis;
+		self.dragInX = dragInX;
+		self.dragInY = dragInY;
+		self.resizeInstead = resizeInstead;
+	end;
+	function DraggableObject:Enable()
+		local object = self.Object;
+		local ActuallyDragThis = self.ActuallyDragThis;
+		local dragInput;
+		local dragStart;
+		local startPos;
+		local preparingToDrag = false;
+		local dragInX = self.dragInX;
+		local dragInY = self.dragInY;
+		local resizeInstead = self.resizeInstead;
+		local function update(input)
+			local delta = (input.Position - (dragStart));
+			local newPosition = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y);
+			local dragThisThing;
+			if ActuallyDragThis then
+				dragThisThing = ActuallyDragThis;
+			else
+				dragThisThing = object;
+			end;
+			if not (resizeInstead) then
+				if dragInX and dragInY then
+					dragThisThing.Position = newPosition;
+				else
+					if dragInX then
+						dragThisThing.Position = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Position.Y.Scale, dragThisThing.Position.Y.Offset);
+					end;
+					if dragInY then
+						dragThisThing.Position = UDim2.new(dragThisThing.Position.X.Scale, dragThisThing.Position.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
+					end;
+				end;
+			else
+				if dragInX and dragInY then
+					dragThisThing.Size = newPosition;
+				else
+					if dragInX then
+						dragThisThing.Size = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Size.Y.Scale, dragThisThing.Size.Y.Offset);
+					end;
+					if dragInY then
+						dragThisThing.Size = UDim2.new(dragThisThing.Size.X.Scale, dragThisThing.Size.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
+					end;
+				end;
+			end;
+			return newPosition;
+		end;
+		self.InputBegan = object.InputBegan:Connect(function(input)
+			if (input.UserInputType == Enum.UserInputType.MouseButton1) or (input.UserInputType == Enum.UserInputType.Touch) then
+				preparingToDrag = true;
+				local connection;
+				connection = input.Changed:Connect(function()
+					if (input.UserInputState == Enum.UserInputState.End) and ((self.Dragging) or preparingToDrag) then
+						self.Dragging = false;
+						connection:Disconnect();
+						if (self.DragEnded) and (not (preparingToDrag)) then
+							self.DragEnded();
+						end;
+						preparingToDrag = false;
+					end;
+				end);
+			end;
+		end);
+		self.InputChanged = object.InputChanged:Connect(function(input)
+			if (input.UserInputType == Enum.UserInputType.MouseMovement) or (input.UserInputType == Enum.UserInputType.Touch) then
+				dragInput = input;
+			end;
+		end);
+		self.InputChanged2 = UserInputService.InputChanged:Connect(function(input)
+			if object.Parent == nil then
+				self:Disable();
+				return nil;
+			end;
+			if preparingToDrag then
+				preparingToDrag = false;
+				if self.DragStarted then
+					self.DragStarted();
+				end;
+				self.Dragging = true;
+				dragStart = input.Position;
+				if not (resizeInstead) then
+					if ActuallyDragThis then
+						startPos = ActuallyDragThis.Position;
+					else
+						startPos = object.Position;
+					end;
+				else
+					if ActuallyDragThis then
+						startPos = ActuallyDragThis.Size;
+					else
+						startPos = object.Size;
+					end;
+				end;
+			end;
+			if (input == dragInput) and (self.Dragging) then
+				local newPosition = update(input);
+				if self.Dragged then
+					self.Dragged(newPosition);
+				end;
+			end;
+		end);
+	end;
+	function DraggableObject:Disable()
+		if self.InputBegan then
+			self.InputBegan:Disconnect();
+		end;
+		if self.InputChanged then
+			self.InputChanged:Disconnect();
+		end;
+		if self.InputChanged2 then
+			self.InputChanged2:Disconnect();
+		end;
+		if self.Dragging then
+			self.Dragging = false;
+			if self.DragEnded then
+				self.DragEnded();
+			end;
+		end;
+	end;
+end;
+exports.DraggableObject = DraggableObject;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="53">
+            <Properties>
+              <string name="Name">Gui</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local Net = TS.import(script, TS.getModule(script, "net").out);
+local WorldGeneratorSelector = TS.import(script, script.Parent, "WorldGeneratorSelector").default;
+local DebugGui = TS.import(script, script.Parent, "DebugGui").default;
+local gui = {};
+local function initalizeAllGuis()
+	print("[Info]: Initializing GUIs");
+	local plrGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui");
+	gui["WGS"] = WorldGeneratorSelector(plrGui);
+	if game:GetService("RunService"):IsStudio() then
+		gui["Debug"] = DebugGui(plrGui);
+		gui["Debug"]:open();
+	end;
+end;
+Net.WaitForClientEventAsync("OpenGui"):andThen(function(event)
+	event:Connect(function(guiToOpen)
+		if gui[guiToOpen] then
+			gui[guiToOpen]:open();
+		end;
+	end);
+end);
+Net.WaitForClientEventAsync("CloseGui"):andThen(function(event)
+	event:Connect(function(guiToClose)
+		if gui[guiToClose] then
+			gui[guiToClose]:close();
+		end;
+	end);
+end);
+local function openGui(gui_)
+	if gui_ ~= "" and gui_ then
+		gui[gui_]:open();
+	end;
+end;
+local function closeGui(gui_)
+	if gui_ ~= "" and gui_ then
+		gui[gui_]:close();
+	end;
+end;
+exports.initalizeAllGuis, exports.openGui, exports.closeGui = initalizeAllGuis, openGui, closeGui;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="54">
+            <Properties>
+              <string name="Name">GuiExtension</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local function addUDim2(udims, addX, addY)
+	if addX == nil then addX = true; end;
+	if addY == nil then addY = true; end;
+	local udimCounter = UDim2.new();
+	TS.array_forEach(udims, function(udim)
+		if addX and addY then
+			udimCounter = (udimCounter + (udim));
+		end;
+		if addX then
+			udimCounter = UDim2.new(udimCounter.X.Scale + udim.X.Scale, udimCounter.X.Offset + udim.X.Offset, udimCounter.Y.Scale, udimCounter.Y.Offset);
+		end;
+		if addY then
+			udimCounter = UDim2.new(udimCounter.X.Scale, udimCounter.X.Offset, udimCounter.Y.Scale + udim.Y.Scale, udimCounter.Y.Offset + udim.Y.Offset);
+		end;
+	end);
+	return udimCounter;
+end;
+local function createBorder(parent, borderWidth, borderColor, borderTransparency)
+	if borderWidth == nil then borderWidth = 1; end;
+	if borderColor == nil then borderColor = Color3.fromRGB(13, 20, 26); end;
+	if borderTransparency == nil then borderTransparency = 0; end;
+	local borderLeft = Instance.new("Frame");
+	borderLeft.Size = UDim2.new(0, borderWidth, 1, 0);
+	borderLeft.BorderSizePixel = 0;
+	borderLeft.BackgroundColor3 = borderColor;
+	borderLeft.Transparency = borderTransparency;
+	borderLeft.Name = "BL";
+	borderLeft.Parent = parent;
+	local borderRight = Instance.new("Frame");
+	borderRight.Size = UDim2.new(0, borderWidth, 1, 0);
+	borderRight.BorderSizePixel = 0;
+	borderRight.Position = UDim2.new(1, 0, 0, 0);
+	borderRight.AnchorPoint = Vector2.new(1, 0);
+	borderRight.BackgroundColor3 = borderColor;
+	borderRight.Transparency = borderTransparency;
+	borderRight.Name = "BR";
+	borderRight.Parent = parent;
+	local borderTop = Instance.new("Frame");
+	borderTop.Size = UDim2.new(1, 0, 0, borderWidth);
+	borderTop.BorderSizePixel = 0;
+	borderTop.BackgroundColor3 = borderColor;
+	borderTop.Transparency = borderTransparency;
+	borderTop.Name = "BT";
+	borderTop.Parent = parent;
+	local borderBottom = Instance.new("Frame");
+	borderBottom.Size = UDim2.new(1, 0, 0, borderWidth);
+	borderBottom.BorderSizePixel = 0;
+	borderBottom.AnchorPoint = Vector2.new(0, 1);
+	borderBottom.Position = UDim2.new(0, 0, 1, 0);
+	borderBottom.BackgroundColor3 = borderColor;
+	borderBottom.Transparency = borderTransparency;
+	borderBottom.Name = "BB";
+	borderBottom.Parent = parent;
+	local containing = Instance.new("Frame");
+	containing.BorderSizePixel = 0;
+	containing.BackgroundTransparency = 1;
+	containing.Size = UDim2.new(1, -2, 1, -1);
+	containing.Position = UDim2.new(0, 1, 0, 0);
+	containing.Parent = parent;
+	return {
+		["borders"] = { borderTop, borderBottom, borderLeft, borderRight };
+		["containingFrame"] = containing;
+	};
+end;
+local UITable;
+do
+	UITable = setmetatable({}, {
+		__tostring = function() return "UITable" end;
+	});
+	UITable.__index = UITable;
+	function UITable.new(...)
+		local self = setmetatable({}, UITable);
+		self:constructor(...);
+		return self;
+	end;
+	function UITable:constructor(gui, parent, columns, size, position, rowsClickable)
+		if rowsClickable == nil then rowsClickable = true; end;
+		self.columnFrames = {};
+		self.columns = columns;
+		self.columnCount = #columns;
+		self.gui = gui;
+		self.parent = parent;
+		self.rowsClickable = rowsClickable;
+		self.tableData = {};
+		self.tableFrame = self.gui:createInvisibleFrame(parent, "Table", size, position, nil);
+		local returnVal = createBorder(self.tableFrame, nil, nil, 0.3);
+		self.mainFrame = returnVal.containingFrame;
+		self.columnBar = self.gui:createInvisibleFrame(self.mainFrame, "TitleBar", UDim2.new(1, 0, 0, 15), UDim2.new(0, 0, 0, 1));
+		self.columnBar.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
+		self.columnBar.BackgroundTransparency = 0.4;
+		self.scrollingFrame = Instance.new("ScrollingFrame");
+		self.scrollingFrame.Parent = self.mainFrame;
+		self.scrollingFrame.Size = UDim2.new(1, 0, 1 - self.columnBar.Size.Y.Scale, -self.columnBar.Size.Y.Offset);
+		self.scrollingFrame.Position = UDim2.new(0, 0, self.columnBar.Size.Y.Scale, self.columnBar.Size.Y.Offset);
+		self.scrollingFrame.BackgroundTransparency = 1;
+		local i = 0;
+		TS.array_forEach(self.columns, function(column)
+			if i ~= self.columnCount - 1 then
+				self:createColumnTab(column, i, self.columnCount);
+			else
+				self:createColumnTab(column, i, self.columnCount, false);
+			end;
+			i = i + 1;
+		end);
+	end;
+	function UITable:getColPositionFromIndex(index, totalCount)
+		if index == 0 then
+			return 0;
+		end;
+		return 1 / totalCount * index;
+	end;
+	function UITable:getTextHeightFromIndex(col, index)
+		if index == 0 then
+			return 0;
+		end;
+		local data = self.tableData[col];
+		if data then
+			local lastEntryData = data[index - 1];
+			if lastEntryData then
+				return TS.map_size(data) * lastEntryData.textLabel.AbsoluteSize.Y;
+			end;
+			warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col));
+			return 0;
+		end;
+		warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col));
+		return 0;
+	end;
+	function UITable:selectHandler(col, index)
+		warn("Clicked: " .. tostring(col) .. ", " .. tostring(index));
+		if self.rowsClickable then
+			if self.selectedRow ~= nil then
+				do
+					local i = 0;
+					while i < #self.columns do
+						local colData = self.tableData[i];
+						if colData then
+							local entryData = colData[self.selectedRow];
+							if entryData then
+								entryData.textLabel.BackgroundTransparency = 1;
+							end;
+						end;
+						i = i + 1;
+					end;
+				end;
+			end;
+			do
+				local i = 0;
+				while i < #self.columns do
+					local colData = self.tableData[i];
+					if colData then
+						local entryData = colData[index];
+						if entryData then
+							entryData.textLabel.BackgroundTransparency = 0.25;
+						end;
+					end;
+					i = i + 1;
+				end;
+			end;
+			self.selectedRow = index;
+			if self.onRowSelect then
+				self.onRowSelect(index);
+			end;
+		end;
+	end;
+	function UITable:createEntryInColumn(column, index, text)
+		local col = self.columnFrames[column];
+		if col then
+			local lbl = self.gui:createGuiLabelBtn(col.frame, text, UDim2.new(1, 0, 0.08, 0), UDim2.new(0, 0, 0, self:getTextHeightFromIndex(column, index)), nil, text, true);
+			lbl.TextWrapped = true;
+			local onSel = function()
+				self:selectHandler(column, index);
+			end;
+			lbl.MouseButton1Click:Connect(onSel);
+			lbl.TouchTap:Connect(onSel);
+			local colData = self.tableData[column];
+			if colData then
+				colData[index] = {
+					["textLabel"] = lbl;
+					["value"] = text;
+				};
+			end;
+		else
+			warn("Invalid col id " .. tostring(column));
+		end;
+	end;
+	function UITable:addRow(index, data)
+		do
+			local i = 0;
+			while i < #data do
+				self:createEntryInColumn(i, index, data[i + 1]);
+				i = i + 1;
+			end;
+		end;
+	end;
+	function UITable:removeRow(index)
+		TS.map_forEach(self.tableData, function(col)
+			local data = col[index];
+			if data then
+				data.textLabel:Destroy();
+				col[index] = nil;
+			end;
+		end);
+	end;
+	function UITable:clearChart()
+		TS.map_forEach(self.tableData, function(col)
+			TS.map_forEach(col, function(index)
+				index.textLabel:Destroy();
+			end);
+			do
+				local i = 0;
+				while i < TS.map_size(col) do
+					col[i] = nil;
+					i = i + 1;
+				end;
+			end;
+		end);
+	end;
+	function UITable:createColumnTab(name, index, totalCount, createDragger)
+		if createDragger == nil then createDragger = true; end;
+		local containerFrame = self.gui:createInvisibleFrame(self.scrollingFrame, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 0, 0, 0));
+		local data = {
+			["name"] = name;
+			["frame"] = containerFrame;
+		};
+		local titleText = self.gui:createGuiLabel(self.columnBar, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 2, 0, 0), nil, name);
+		titleText.TextXAlignment = Enum.TextXAlignment.Left;
+		titleText.TextWrapped = true;
+		if createDragger then
+			local titleDragger = self.gui:createInvisibleFrame(titleText, "Dragger", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0), nil);
+			titleDragger.BackgroundTransparency = 0.1;
+			local border = self.gui:createInvisibleFrame(containerFrame, "Border", UDim2.new(0, 1, 1, 0), UDim2.new(1, 0, 0, 0), nil);
+			border.BackgroundTransparency = 0.9;
+		end;
+		local _0 = self.columnFrames;
+		_0[index] = data;
+		local _2 = self.tableData;
+		local _3 = index;
+		local _1 = {};
+		_2[_3] = _1;
+	end;
+	function UITable:columnNameToIndex(name)
+		local i = 0;
+		do
+			while self.columnFrames[i].name ~= name do
+				i = i + 1;
+			end;
+		end;
+		return i;
+	end;
+end;
+exports.addUDim2, exports.UITable = addUDim2, UITable;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="55">
+            <Properties>
+              <string name="Name">GuiLib</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local DraggableObject = TS.import(script, script.Parent, "DraggableObject").DraggableObject;
+local Gui;
+do
+	Gui = setmetatable({}, {
+		__tostring = function() return "Gui" end;
+	});
+	Gui.__index = Gui;
+	function Gui.new(...)
+		local self = setmetatable({}, Gui);
+		self:constructor(...);
+		return self;
+	end;
+	function Gui:constructor(parentGui, size, title, isDraggable, closeButton, textSize, centered, position, createTitleBar, activeGui)
+		if size == nil then size = UDim2.new(0, 237, 0, 295); end;
+		if title == nil then title = ""; end;
+		if isDraggable == nil then isDraggable = true; end;
+		if closeButton == nil then closeButton = true; end;
+		if textSize == nil then textSize = 14; end;
+		if centered == nil then centered = true; end;
+		if createTitleBar == nil then createTitleBar = true; end;
+		if activeGui == nil then activeGui = false; end;
+		self.titleBarDraggable = false;
+		self.gui = parentGui;
+		self.mainContainer = Instance.new("Frame");
+		self.guiContainer = Instance.new("Frame");
+		if self.gui then
+			self.guiContainer.Parent = self.gui;
+			self.gui.Name = title;
+		else
+			error("GUI not found");
+		end;
+		if centered then
+			if position then
+				error("Cannot specify position if centered");
+			end;
+			self.guiContainer.Position = UDim2.new(0.5 - size.X.Scale / 2, -size.X.Offset / 2, 0.5 - size.Y.Scale / 2, -size.Y.Offset / 2);
+		else
+			if position then
+				self.guiContainer.Position = position;
+			else
+				error("Need position if not centered");
+			end;
+		end;
+		self.guiContainer.Size = size;
+		self.guiContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
+		self.guiContainer.BackgroundTransparency = 0.4;
+		self.guiContainer.BorderColor3 = Color3.fromRGB(13, 20, 26);
+		self.guiContainer.BorderSizePixel = 4;
+		self.guiContainer.Name = "Container";
+		if activeGui then
+			self.guiContainer.Active = true;
+		end;
+		if createTitleBar then
+			self.titleBar = Instance.new("Frame");
+			self.titleBar.BackgroundTransparency = 1;
+			self.titleBar.Size = UDim2.new(1, 0, 0.07, 0);
+			self.titleBar.Name = "TitleBar";
+			self.titleBarDraggable = isDraggable;
+			self.titleBar.Parent = self.guiContainer;
+			self.titleBarBorder = Instance.new("Frame");
+			self.titleBarBorder.BorderSizePixel = 0;
+			self.titleBarBorder.BackgroundTransparency = 0.6;
+			self.titleBarBorder.Position = UDim2.new(0.5, 0, 1, 0);
+			self.titleBarBorder.Size = UDim2.new(0.997, 0, 0, 1);
+			self.titleBarBorder.AnchorPoint = Vector2.new(0.5, 0.5);
+			self.titleBarBorder.Parent = self.titleBar;
+			self.titleBarBorder.Name = "Border";
+			self.titleBarLabel = Instance.new("TextLabel");
+			self.titleBarLabel.Name = "Title";
+			self.titleBarLabel.Text = title;
+			self.titleBarLabel.Position = UDim2.new(0.02, 0, 0.5, 0);
+			self.titleBarLabel.Size = UDim2.new(1, 0, 0.5, 0);
+			self.titleBarLabel.TextSize = textSize;
+			self.titleBarLabel.TextXAlignment = Enum.TextXAlignment.Left;
+			self.titleBarLabel.BackgroundTransparency = 1;
+			self.titleBarLabel.AnchorPoint = Vector2.new(0, 0.5);
+			self.titleBarLabel.Font = Enum.Font.SourceSans;
+			self.titleBarLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
+			self.titleBarLabel.Parent = self.titleBar;
+			if isDraggable then
+				self.dragger = DraggableObject.new(self.titleBar, self.guiContainer);
+				self.dragger:Enable();
+			end;
+			if closeButton then
+				self.titleBarCloseBtn = Instance.new("TextButton");
+				self.titleBarCloseBtn.Name = "Close";
+				self.titleBarCloseBtn.AnchorPoint = Vector2.new(1, 0);
+				self.titleBarCloseBtn.Position = UDim2.new(1, 0, 0, 0);
+				self.titleBarCloseBtn.Size = UDim2.new(0.08, 0, 1, 0);
+				self.titleBarCloseBtn.BackgroundTransparency = 1;
+				self.titleBarCloseBtn.Text = "X";
+				self.titleBarCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255);
+				self.titleBarCloseBtn.Parent = self.titleBar;
+				self.titleBarCloseBtn.MouseButton1Click:Connect(function()
+					self:close();
+				end);
+			end;
+			self.mainContainer = Instance.new("Frame");
+			self.mainContainer.BackgroundTransparency = 1;
+			self.mainContainer.Size = (UDim2.new(2, -3, 1 - self.titleBarBorder.Size.Y.Scale - 0.01, -self.titleBarBorder.Size.Y.Offset) - (self.titleBar.Size));
+			self.mainContainer.Position = UDim2.new(0, 3, self.titleBar.Size.Y.Scale + self.titleBarBorder.Size.Y.Scale, self.titleBar.Size.Y.Offset + self.titleBarBorder.Size.Y.Offset + 5);
+			self.mainContainer.Name = "MainContainer";
+			self.mainContainer.Parent = self.guiContainer;
+		end;
+	end;
+	function Gui:createWindow()
+	end;
+	function Gui:close()
+		if self.OnClose then
+			self.OnClose();
+		end;
+		if self.gui then
+			if self.dragger then
+				self.dragger:Disable();
+			end;
+			self.gui.Enabled = false;
+		end;
+	end;
+	function Gui:open()
+		if self.OnOpen then
+			self.OnOpen();
+		end;
+		if self.gui then
+			self.gui.Enabled = true;
+			if self.dragger then
+				self.dragger:Enable();
+			end;
+		end;
+	end;
+	function Gui:createInvisibleFrame(Parent, Name, Size, Position, AnchorPoint)
+		local newFrame = Instance.new("Frame");
+		if Name ~= "" and Name then
+			newFrame.Name = Name;
+		end;
+		if Size then
+			newFrame.Size = Size;
+		end;
+		if Position then
+			newFrame.Position = Position;
+		end;
+		if AnchorPoint then
+			newFrame.AnchorPoint = AnchorPoint;
+		end;
+		newFrame.BorderSizePixel = 0;
+		newFrame.BackgroundTransparency = 1;
+		newFrame.Parent = Parent;
+		return newFrame;
+	end;
+	function Gui:createGuiButton(Parent, Name, Size, Position, AnchorPoint, ButtonText)
+		local newButton = Instance.new("TextButton");
+		newButton.BackgroundColor3 = Color3.fromRGB(21, 21, 21);
+		newButton.TextColor3 = Color3.fromRGB(255, 255, 255);
+		newButton.BackgroundTransparency = 0.17;
+		if Name ~= "" and Name then
+			newButton.Name = Name;
+		end;
+		if Size then
+			newButton.Size = Size;
+		end;
+		if not (Size) then
+			newButton.Size = UDim2.new(0.2, 0, 0.08, 0);
+		end;
+		if Position then
+			newButton.Position = Position;
+		end;
+		if AnchorPoint then
+			newButton.AnchorPoint = AnchorPoint;
+		end;
+		if ButtonText ~= "" and ButtonText then
+			newButton.Text = ButtonText;
+		end;
+		newButton.Parent = Parent;
+		return newButton;
+	end;
+	function Gui:createGuiLabel(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
+		if alignLeft == nil then alignLeft = false; end;
+		local newLabel = Instance.new("TextLabel");
+		newLabel.BackgroundTransparency = 1;
+		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
+		newLabel.BorderSizePixel = 0;
+		if Name ~= "" and Name then
+			newLabel.Name = Name;
+		end;
+		if Size then
+			newLabel.Size = Size;
+		end;
+		if not (Size) then
+			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0);
+		end;
+		if Position then
+			newLabel.Position = Position;
+		end;
+		if AnchorPoint then
+			newLabel.AnchorPoint = AnchorPoint;
+		end;
+		if LabelText ~= "" and LabelText then
+			newLabel.Text = LabelText;
+		end;
+		if alignLeft then
+			newLabel.TextXAlignment = Enum.TextXAlignment.Left;
+		end;
+		newLabel.Parent = Parent;
+		return newLabel;
+	end;
+	function Gui:createGuiLabelBtn(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
+		if alignLeft == nil then alignLeft = false; end;
+		local newLabel = Instance.new("TextButton");
+		newLabel.BackgroundTransparency = 1;
+		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
+		newLabel.BorderSizePixel = 0;
+		if Name ~= "" and Name then
+			newLabel.Name = Name;
+		end;
+		if Size then
+			newLabel.Size = Size;
+		end;
+		if not (Size) then
+			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0);
+		end;
+		if Position then
+			newLabel.Position = Position;
+		end;
+		if AnchorPoint then
+			newLabel.AnchorPoint = AnchorPoint;
+		end;
+		if LabelText ~= "" and LabelText then
+			newLabel.Text = LabelText;
+		end;
+		if alignLeft then
+			newLabel.TextXAlignment = Enum.TextXAlignment.Left;
+		end;
+		newLabel.Parent = Parent;
+		return newLabel;
+	end;
+end;
+local function createScreenGui(Parent, Name)
+	if Name == nil then Name = "Gui"; end;
+	local newGui = Instance.new("ScreenGui");
+	newGui.Name = Name;
+	newGui.Parent = Parent;
+	newGui.Enabled = false;
+	return newGui;
+end;
+exports.Gui, exports.createScreenGui = Gui, createScreenGui;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="56">
+            <Properties>
+              <string name="Name">WorldGeneratorSelector</string>
+              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
+-- September 25, 2020, 12:55 AM Eastern Daylight Time
+
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
+local exports = {};
+local _0 = TS.import(script, script.Parent, "GuiLib");
+local Gui, createScreenGui = _0.Gui, _0.createScreenGui;
+local Net = TS.import(script, TS.getModule(script, "net").out);
+local function WorldGeneratorSelector(plrGui)
+	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 105, 0, 95), "Select WorldGen", true, false);
+	local selectPlane = gui:createGuiButton(gui.mainContainer, "SelectPlane", UDim2.new(0, 90, 0, 16), UDim2.new(0, 5, 0, 10), nil, "Plane");
+	local selectFlatIsland = gui:createGuiButton(gui.mainContainer, "SelectFlatIsland", UDim2.new(0, 90, 0, 16), (UDim2.new(0, 5, 0, 20) + (UDim2.new(0, 0, selectPlane.Size.Y.Scale, selectPlane.Size.Y.Offset))), nil, "FlatIsland");
+	local selectSimplex = gui:createGuiButton(gui.mainContainer, "SelectSimplex", UDim2.new(0, 90, 0, 16), (UDim2.new(0, 5, 0, 30) + (UDim2.new(0, 0, selectPlane.Size.Y.Scale * 2, selectPlane.Size.Y.Offset * 2))), nil, "Simplex");
+	Net.WaitForClientEventAsync("WGSelection"):andThen(function(WGSelection)
+		local function sendPlane()
+			WGSelection:SendToServer("Plane");
+		end;
+		local function sendFlatIsland()
+			WGSelection:SendToServer("FlatIsland");
+		end;
+		local function sendSimplex()
+			WGSelection:SendToServer("Simplex");
+		end;
+		selectPlane.MouseButton1Click:Connect(sendPlane);
+		selectPlane.TouchTap:Connect(sendPlane);
+		selectFlatIsland.MouseButton1Click:Connect(sendFlatIsland);
+		selectFlatIsland.TouchTap:Connect(sendFlatIsland);
+		selectSimplex.MouseButton1Click:Connect(sendSimplex);
+		selectSimplex.TouchTap:Connect(sendSimplex);
+	end);
+	print("[Info]: Created WGSMenu");
+	return gui;
+end;
+exports.default = WorldGeneratorSelector;
+return exports;
+]]></string>
+            </Properties>
+          </Item>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+</roblox>
