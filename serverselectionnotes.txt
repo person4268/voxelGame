@@ -1,0 +1,21 @@
+Game selection server notes
+
+- Uses gui lib from main game
+- Has nothing but gui
+- Table with checkbox to filter for friends
+- Join and refresh buttons
+- Create server button
+  - Opens dialog
+  - Allows player to name server, allow friends or everyone, and set a join password
+
+- Internals
+  - Server keeps track of games using datastore
+  - in datastore, indexed using private server id
+  - stores owner, password, friends only
+  
+  - on join tells client to open password gui, server stores id that client is trying to connect to
+    - on success TeleportService.TeleportToPrivateServer()
+    - failure open fail dialog with reason
+
+   - on create, TeleportService:ReserveServer(), store server data in datastore
+   - then teleport
