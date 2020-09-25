@@ -4,10 +4,15 @@ An attempt at creating a Minecraft clone game in Roblox using roblox-ts. Current
 
 ## Compiling
 1. `npm install -g roblox-ts`
-2. Install rojo from `https://github.com/LPGhatguy/rojo/releases`
-3. `npm install`
-4. `rbxtsc` or `rbxtsc -w`
-5. `rojo build --output game.rbxlx` or `rojo build --output game.rbxl` or `rojo plugin install` and `rojo serve`
+2. `cd menu; npm install; cd ../main; npm install; cd ..`
+3. `./buildAll.sh` or `./buildAll.bat`
+
+## Setting up Rojo watch mode
+1. Install the Rojo ROBLOX Studio plugin
+2. `cd main` or `cd menu`
+3. `rbxtsc -w &`
+4. `../bin/rojo serve`
+5. Open the Rojo tab in RBXStudio and click connect
 
 ## Credits
 Textures:
