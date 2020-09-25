@@ -1,5 +1,5 @@
 {
-	"name": "roblox-ts-game",
+	"name": "main-game",
 	"tree": {
 		"$className": "DataModel",
 		"ServerScriptService": {
