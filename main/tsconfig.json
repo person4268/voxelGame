@@ -20,6 +20,8 @@
 
 		// optional, non-configurable
 		"jsx": "react",
-		"jsxFactory": "Roact.createElement"
+		"jsxFactory": "Roact.createElement",
+
+		"moduleResolution": "Node"
 	}
 }

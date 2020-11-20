@@ -8,10 +8,9 @@
   },
   "keywords": [],
   "author": "",
-  "devDependencies": {
-    "@rbxts/types": "^1.0.355"
-  },
   "dependencies": {
-    "@rbxts/net": "^1.2.8"
+    "@rbxts/compiler-types": "^1.0.0-beta.4.0",
+    "@rbxts/net": "^1.2.8",
+    "@rbxts/types": "^1.0.397"
   }
 }
