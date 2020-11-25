@@ -10,53 +10,60 @@
       <Item class="ModuleScript" referent="2">
         <Properties>
           <string name="Name">globals</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local exports = {};
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
 local globals = {
-	renderDistance = 32;
-	blockSize = Vector3.new(3, 3, 3);
-	reachLength = 3 * 5;
+	renderDistance = 32,
+	blockSize = Vector3.new(3, 3, 3),
+	reachLength = 3 * 5,
 	textures = {
-		grid = "rbxassetid://5009068659";
-		grass_top = "rbxassetid://5295578161";
-		grass_side = "rbxassetid://5295598324";
-		dirt = "rbxassetid://5295593115";
-		brick = "rbxassetid://5295595753";
-		stone = "rbxassetid://5295590108";
-		obsidian = "rbxassetid://5295587145";
-	};
-	chunkSize = Vector2.new(16, 16);
-	simplexNoiseDividend = 36;
-	simplexNoiseScale = 1.75;
-	primaryGenerationHeight = 15;
-	dirtToStoneHeight = 7;
-};
-exports.default = globals;
-return exports;
+		grid = "rbxassetid://5009068659",
+		grass_top = "rbxassetid://5295578161",
+		grass_side = "rbxassetid://5295598324",
+		dirt = "rbxassetid://5295593115",
+		brick = "rbxassetid://5295595753",
+		stone = "rbxassetid://5295590108",
+		obsidian = "rbxassetid://5295587145",
+	},
+	chunkSize = Vector2.new(16, 16),
+	simplexNoiseDividend = 36,
+	simplexNoiseScale = 1.75,
+	primaryGenerationHeight = 15,
+	dirtToStoneHeight = 7,
+}
+local default = globals
+return {
+	default = default,
+}
 ]]></string>
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="3">
         <Properties>
           <string name="Name">isBlockReachable</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+--[[
+	*
+	* Checks if a block is reachable against globals.reachLength. Returns true if so.
+	* @param blockPosition The block's position
+	* @param playerPosition The player's position
+]]
 local function isBlockReachable(blockPosition, playerPosition)
-	local blockRealPos = (blockPosition * (globals.blockSize));
-	local distanceFromBlockToPlr = (playerPosition - (blockPosition)).Magnitude;
+	local _0 = blockPosition
+	local _1 = globals.blockSize
+	local blockRealPos = _0 * _1
+	local _2 = playerPosition
+	local _3 = blockPosition
+	local distanceFromBlockToPlr = (_2 - _3).Magnitude
 	if distanceFromBlockToPlr <= globals.reachLength then
-		return true;
-	end;
-	return false;
-end;
-exports.isBlockReachable = isBlockReachable;
-return exports;
+		return true
+	end
+	return false
+end
+return {
+	isBlockReachable = isBlockReachable,
+}
 ]]></string>
         </Properties>
       </Item>
@@ -654,13 +661,8 @@ return Promise
           <string name="Name">RuntimeLib</string>
           <string name="Source"><![CDATA[local Promise = require(script.Parent.Promise)
 
-local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-
-local ReplicatedFirst
-if not __LEMUR__ then
-	ReplicatedFirst = game:GetService("ReplicatedFirst")
-end
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
 
 local TS = {}
 
@@ -714,12 +716,12 @@ end
 
 -- module resolution
 function TS.getModule(object, moduleName)
-	if not __LEMUR__ and object:IsDescendantOf(ReplicatedFirst) then
+	if RunService:IsRunning() and object:IsDescendantOf(ReplicatedFirst) then
 		warn("roblox-ts packages should not be used from ReplicatedFirst!")
 	end
 
 	-- ensure modules have fully replicated
-	if not __LEMUR__ and RunService:IsRunning() and RunService:IsClient() and not isPlugin(object) and not game:IsLoaded() then
+	if RunService:IsRunning() and RunService:IsClient() and not isPlugin(object) and not game:IsLoaded() then
 		game.Loaded:Wait()
 	end
 
@@ -850,43 +852,25 @@ function TS.async(callback)
 	end
 end
 
-function TS.generator(c)
-	c = coroutine.create(c)
-
-	local o = {
-		next = function(...)
-			if coroutine.status(c) == "dead" then
-				return { done = true }
-			else
-				local success, value = coroutine.resume(c, ...)
-				if success == false then error(value, 2) end
-				return { value = value, done = coroutine.status(c) == "dead" }
-			end
-		end
-	}
-
-	o[TS.Symbol_iterator] = function() return o end
-
-	return o
-end
-
 local function package(...)
 	return select("#", ...), {...}
 end
 
-local function assertAwait(ok, ...)
-	if ok then
-		return ...
-	else
-		error(ok == nil and "The awaited Promise was cancelled" or (...), 2)
-	end
-end
-
 function TS.await(promise)
-	if Promise.is(promise) then
-		return assertAwait(promise:await())
-	else
+	if not Promise.is(promise) then
 		return promise
+	end
+
+	local size, result = package(promise:await())
+	local ok = table.remove(result, 1)
+	if ok then
+		if size > 2 then
+			return result
+		else
+			return result[1]
+		end
+	else
+		error(ok == nil and "The awaited Promise was cancelled" or (size > 2 and result[1] or result), 2)
 	end
 end
 
@@ -907,6 +891,58 @@ function TS.bit_lrsh(a, b)
 		return -result - 1
 	end
 end
+
+TS.TRY_RETURN = 1
+TS.TRY_BREAK = 2
+TS.TRY_CONTINUE = 3
+
+function TS.try(func, catch, finally)
+	local err, traceback
+	local success, exitType, returns = xpcall(
+		func,
+		function(errInner)
+			err = errInner
+			traceback = debug.traceback()
+		end
+	)
+	if not success and catch then
+		local newExitType, newReturns = catch(err, traceback)
+		if newExitType then
+			exitType, returns = newExitType, newReturns
+		end
+	end
+	if finally then
+		local newExitType, newReturns = finally()
+		if newExitType then
+			exitType, returns = newExitType, newReturns
+		end
+	end
+	return exitType, returns
+end
+
+function TS.generator(callback)
+	local co = coroutine.create(callback)
+	return {
+		next = function(...)
+			if coroutine.status(co) == "dead" then
+				return { done = true }
+			else
+				local success, value = coroutine.resume(co, ...)
+				if success == false then
+					error(value, 2)
+				end
+				return {
+					value = value,
+					done = coroutine.status(co) == "dead"
+				}
+			end
+		end
+	}
+end
+
+-- LEGACY RUNTIME FUNCTIONS
+
+local HttpService = game:GetService("HttpService")
 
 -- utility functions
 local function copy(object)
@@ -1688,9 +1724,19 @@ return TS
         </Properties>
         <Item class="Folder" referent="8">
           <Properties>
+            <string name="Name">compiler-types</string>
+          </Properties>
+          <Item class="Folder" referent="9">
+            <Properties>
+              <string name="Name">types</string>
+            </Properties>
+          </Item>
+        </Item>
+        <Item class="Folder" referent="10">
+          <Properties>
             <string name="Name">net</string>
           </Properties>
-          <Item class="ModuleScript" referent="9">
+          <Item class="ModuleScript" referent="11">
             <Properties>
               <string name="Name">out</string>
               <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -1890,7 +1936,7 @@ exports = Net;
 return exports;
 ]]></string>
             </Properties>
-            <Item class="ModuleScript" referent="10">
+            <Item class="ModuleScript" referent="12">
               <Properties>
                 <string name="Name">ClientAsyncFunction</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2001,7 +2047,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="11">
+            <Item class="ModuleScript" referent="13">
               <Properties>
                 <string name="Name">ClientEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2057,7 +2103,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="12">
+            <Item class="ModuleScript" referent="14">
               <Properties>
                 <string name="Name">ClientFunction</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2129,7 +2175,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="13">
+            <Item class="ModuleScript" referent="15">
               <Properties>
                 <string name="Name">GlobalClientEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2162,7 +2208,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="14">
+            <Item class="ModuleScript" referent="16">
               <Properties>
                 <string name="Name">GlobalEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2286,7 +2332,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="15">
+            <Item class="ModuleScript" referent="17">
               <Properties>
                 <string name="Name">GlobalServerEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2414,7 +2460,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="16">
+            <Item class="ModuleScript" referent="18">
               <Properties>
                 <string name="Name">MockMessagingService</string>
                 <string name="Source"><![CDATA[local MockMessagingService = {}
@@ -2448,7 +2494,7 @@ return MockMessagingService
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="17">
+            <Item class="ModuleScript" referent="19">
               <Properties>
                 <string name="Name">Serializer</string>
                 <string name="Source"><![CDATA[local Serializer = {}
@@ -2543,7 +2589,7 @@ return Serializer
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="18">
+            <Item class="ModuleScript" referent="20">
               <Properties>
                 <string name="Name">ServerAsyncFunction</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2663,7 +2709,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="19">
+            <Item class="ModuleScript" referent="21">
               <Properties>
                 <string name="Name">ServerEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2808,7 +2854,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="20">
+            <Item class="ModuleScript" referent="22">
               <Properties>
                 <string name="Name">ServerFunction</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2888,7 +2934,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="21">
+            <Item class="ModuleScript" referent="23">
               <Properties>
                 <string name="Name">ServerThrottledEvent</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -2960,7 +3006,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="22">
+            <Item class="ModuleScript" referent="24">
               <Properties>
                 <string name="Name">ServerThrottledFunction</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -3034,7 +3080,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="23">
+            <Item class="ModuleScript" referent="25">
               <Properties>
                 <string name="Name">Throttle</string>
                 <string name="Source"><![CDATA[local Throttle = {
@@ -3097,7 +3143,7 @@ return Throttle
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="24">
+            <Item class="ModuleScript" referent="26">
               <Properties>
                 <string name="Name">configuration</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -3166,7 +3212,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="25">
+            <Item class="ModuleScript" referent="27">
               <Properties>
                 <string name="Name">internal</string>
                 <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.1
@@ -3325,7 +3371,7 @@ return exports;
 ]]></string>
               </Properties>
             </Item>
-            <Item class="ModuleScript" referent="26">
+            <Item class="ModuleScript" referent="28">
               <Properties>
                 <string name="Name">utility</string>
                 <string name="Source"><![CDATA[local function isMixedTable(value)
@@ -3383,15 +3429,15 @@ return {
             </Item>
           </Item>
         </Item>
-        <Item class="Folder" referent="27">
+        <Item class="Folder" referent="29">
           <Properties>
             <string name="Name">types</string>
           </Properties>
-          <Item class="Folder" referent="28">
+          <Item class="Folder" referent="30">
             <Properties>
               <string name="Name">include</string>
             </Properties>
-            <Item class="Folder" referent="29">
+            <Item class="Folder" referent="31">
               <Properties>
                 <string name="Name">generated</string>
               </Properties>
@@ -3401,1672 +3447,2187 @@ return {
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="30">
+  <Item class="ServerScriptService" referent="32">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="31">
+    <Item class="Folder" referent="33">
       <Properties>
         <string name="Name">TS</string>
       </Properties>
-      <Item class="ModuleScript" referent="32">
-        <Properties>
-          <string name="Name">BedrockBlockState</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState;
-local BedrockBlockState;
-do
-	local super = BlockState;
-	BedrockBlockState = setmetatable({}, {
-		__index = super;
-		__tostring = function() return "BedrockBlockState" end;
-	});
-	BedrockBlockState.__index = BedrockBlockState;
-	function BedrockBlockState.new(...)
-		local self = setmetatable({}, BedrockBlockState);
-		self:constructor(...);
-		return self;
-	end;
-	function BedrockBlockState:constructor(...)
-		super.constructor(self, ...);
-		self.unbreakable = true;
-	end;
-end;
-exports.BedrockBlockState = BedrockBlockState;
-return exports;
-]]></string>
-        </Properties>
-      </Item>
-      <Item class="ModuleScript" referent="33">
-        <Properties>
-          <string name="Name">BlockState</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local TextureHandler = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "TextureHandler").default;
-local BlockState;
-do
-	BlockState = setmetatable({}, {
-		__tostring = function() return "BlockState" end;
-	});
-	BlockState.__index = BlockState;
-	function BlockState.new(...)
-		local self = setmetatable({}, BlockState);
-		self:constructor(...);
-		return self;
-	end;
-	function BlockState:constructor(...)
-		self.id = "generic";
-		self.position = Vector3.new(0, 0, 0);
-		self.block = Instance.new("Part");
-		self.blockData = {};
-		self.interactable = false;
-		self.unbreakable = false;
-	end;
-	function BlockState:getRealPosition()
-		return (self.position * (globals.blockSize));
-	end;
-	function BlockState:createBlock()
-		self.block = Instance.new("Part");
-		self.block.Position = self:getRealPosition();
-		self.block.Size = globals.blockSize;
-		self.block.Anchored = true;
-		self.block.Material = Enum.Material.SmoothPlastic;
-		self.block.TopSurface = Enum.SurfaceType.Smooth;
-		self.block.BottomSurface = Enum.SurfaceType.Smooth;
-		TextureHandler.applyTexture(self);
-		self.block.Parent = game.Workspace:FindFirstChild("Blocks");
-	end;
-	function BlockState:destroyBlock()
-		if self.block then
-			self.block:Destroy();
-			self.block = Instance.new("Part");
-		end;
-	end;
-	function BlockState:interact(player, face)
-	end;
-end;
-exports.BlockState = BlockState;
-return exports;
-]]></string>
-        </Properties>
-      </Item>
       <Item class="ModuleScript" referent="34">
         <Properties>
+          <string name="Name">BedrockBlockState</string>
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState
+local BedrockBlockState
+do
+	local super = BlockState
+	BedrockBlockState = setmetatable({}, {
+		__tostring = function()
+			return "BedrockBlockState"
+		end,
+		__index = super,
+	})
+	BedrockBlockState.__index = BedrockBlockState
+	function BedrockBlockState.new(...)
+		local self = setmetatable({}, BedrockBlockState)
+		self:constructor(...)
+		return self
+	end
+	function BedrockBlockState:constructor(...)
+		super.constructor(self, ...)
+		self.unbreakable = true
+	end
+end
+return {
+	BedrockBlockState = BedrockBlockState,
+}
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="35">
+        <Properties>
+          <string name="Name">BlockState</string>
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local TextureHandler = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "TextureHandler").default
+local BlockState
+do
+	BlockState = setmetatable({}, {
+		__tostring = function()
+			return "BlockState"
+		end,
+	})
+	BlockState.__index = BlockState
+	function BlockState.new(...)
+		local self = setmetatable({}, BlockState)
+		self:constructor(...)
+		return self
+	end
+	function BlockState:constructor()
+		self.id = "generic"
+		self.position = Vector3.new(0, 0, 0)
+		self.block = Instance.new("Part")
+		self.blockData = {}
+		self.interactable = false
+		self.unbreakable = false
+	end
+	function BlockState:getRealPosition()
+		local _0 = self.position
+		local _1 = globals.blockSize
+		return _0 * _1
+	end
+	function BlockState:createBlock()
+		self.block = Instance.new("Part")
+		self.block.Position = self:getRealPosition()
+		self.block.Size = globals.blockSize
+		self.block.Anchored = true
+		self.block.Material = Enum.Material.SmoothPlastic
+		self.block.TopSurface = Enum.SurfaceType.Smooth
+		self.block.BottomSurface = Enum.SurfaceType.Smooth
+		TextureHandler.applyTexture(self)
+		self.block.Parent = game.Workspace:FindFirstChild("Blocks")
+	end
+	function BlockState:destroyBlock()
+		if self.block then
+			self.block:Destroy()
+			self.block = Instance.new("Part")
+		end
+	end
+	function BlockState:interact(player, face)
+	end
+end
+return {
+	BlockState = BlockState,
+}
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="36">
+        <Properties>
           <string name="Name">Blocks</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState;
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local Net = TS.import(script, TS.getModule(script, "net").out);
-local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable;
-local BedrockBlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BedrockBlockState").BedrockBlockState;
-local evtInteract = Net.CreateEvent("InteractBlock");
-local evtDestroy = Net.CreateEvent("DestroyBlock");
-local BlockData;
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local BlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BlockState").BlockState
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local Net = TS.import(script, TS.getModule(script, "net").out)
+local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable
+local BedrockBlockState = TS.import(script, game:GetService("ServerScriptService"), "TS", "BedrockBlockState").BedrockBlockState
+local evtInteract = Net.CreateEvent("InteractBlock")
+local evtDestroy = Net.CreateEvent("DestroyBlock")
+local BlockData
 do
 	BlockData = setmetatable({}, {
-		__tostring = function() return "BlockData" end;
-	});
-	BlockData.__index = BlockData;
+		__tostring = function()
+			return "BlockData"
+		end,
+	})
+	BlockData.__index = BlockData
 	function BlockData.new(...)
-		local self = setmetatable({}, BlockData);
-		self:constructor(...);
-		return self;
-	end;
+		local self = setmetatable({}, BlockData)
+		self:constructor(...)
+		return self
+	end
 	function BlockData:constructor(_position, _id, _blockData)
-		self.position = Vector3.new(0, 0, 0);
-		self.id = "generic";
-		self.blockData = nil;
-		self.position = _position;
-		self.id = _id;
-		self.blockData = _blockData;
-	end;
-end;
-local blocks = {};
+		self.position = Vector3.new(0, 0, 0)
+		self.id = "generic"
+		self.blockData = nil
+		self.position = _position
+		self.id = _id
+		self.blockData = _blockData
+	end
+end
+-- In format of x,y,z
+local blocks = {}
+--[[
+	*
+	* Gets the correct block state for specified id because a block might want to have its own blockstate
+	* @param id
+]]
 local function getCorrectBlockState(id)
-	local _0 = id;
 	repeat
-		if _0 == "obsidian" then
-			return BedrockBlockState;
-		end;
-		return BlockState;
-	until true;
-end;
+		if id == "obsidian" then
+			return BedrockBlockState
+		end
+		return BlockState
+	until true
+end
 local function createBlock(position, id, blockData)
-	local newBlockState = getCorrectBlockState(id).new();
-	newBlockState.position = position;
-	newBlockState.id = id;
-	newBlockState.blockData = blockData;
-	newBlockState:createBlock();
-	blocks[tostring(position.X) .. "," .. tostring(position.Y) .. "," .. tostring(position.Z)] = newBlockState;
-end;
+	local newBlockState = (getCorrectBlockState(id)).new()
+	newBlockState.position = position
+	newBlockState.id = id
+	newBlockState.blockData = blockData
+	newBlockState:createBlock()
+	local _0 = blocks
+	local _1 = tostring(position.X) .. "," .. tostring(position.Y) .. "," .. tostring(position.Z)
+	local _2 = newBlockState
+	-- ▼ Map.set ▼
+	_0[_1] = _2
+	-- ▲ Map.set ▲
+end
 local function createBlocksFromArray(blocks)
-	TS.array_forEach(blocks, function(block)
-		createBlock(block.position, block.id, block.blockData);
-	end);
-end;
+	local _0 = blocks
+	local _1 = function(block)
+		createBlock(block.position, block.id, block.blockData)
+	end
+	-- ▼ ReadonlyArray.forEach ▼
+	for _2, _3 in ipairs(_0) do
+		_1(_3, _2 - 1, _0)
+	end
+	-- ▲ ReadonlyArray.forEach ▲
+end
 local function fill(startPos, endPos, block, blockData)
+	-- let blockArray: Array<BlockData> = [];
 	do
-		local x = startPos.X;
-		while x <= endPos.X do
+		local _0 = startPos.X
+		while _0 <= endPos.X do
+			local x = _0
 			do
-				local y = startPos.Y;
-				while y <= endPos.Y do
+				local _1 = startPos.Y
+				while _1 <= endPos.Y do
+					local y = _1
 					do
-						local z = startPos.Z;
-						while z <= endPos.Z do
-							createBlock(Vector3.new(x, y, z), block, blockData);
+						local _2 = startPos.Z
+						while _2 <= endPos.Z do
+							local z = _2
+							-- blockArray.push(new BlockData(new Vector3(x, y, z), block, blockData));
+							createBlock(Vector3.new(x, y, z), block, blockData)
 							if startPos.Z - endPos.Z == 0 then
-								break;
-							end;
-							z = z + 1;
-						end;
-					end;
+								break
+							end
+							_2 = z
+							_2 += 1
+						end
+					end
 					if startPos.Y - endPos.Y == 0 then
-						break;
-					end;
-					y = y + 1;
-				end;
-			end;
+						break
+					end
+					_1 = y
+					_1 += 1
+				end
+			end
 			if startPos.X - endPos.X == 0 then
-				break;
-			end;
-			x = x + 1;
-		end;
-	end;
-end;
+				break
+			end
+			_0 = x
+			_0 += 1
+		end
+	end
+	-- createBlocksFromArray(blockArray);
+end
 local function placeBlockFromOtherBlock(player, blockPosition, face, chosenBlock)
-	local newBlockPos = blockPosition;
-	local block = chosenBlock;
-	local _0 = face;
+	local newBlockPos = blockPosition
+	local block = chosenBlock
 	repeat
-		if _0 == Enum.NormalId.Back then
-			newBlockPos = (blockPosition + (Vector3.new(0, 0, 1)));
-			break;
-		end;
-		if _0 == Enum.NormalId.Bottom then
-			newBlockPos = (blockPosition + (Vector3.new(0, -1, 0)));
-			break;
-		end;
-		if _0 == Enum.NormalId.Top then
-			newBlockPos = (blockPosition + (Vector3.new(0, 1, 0)));
-			break;
-		end;
-		if _0 == Enum.NormalId.Front then
-			newBlockPos = (blockPosition + (Vector3.new(0, 0, -1)));
-			break;
-		end;
-		if _0 == Enum.NormalId.Left then
-			newBlockPos = (blockPosition + (Vector3.new(-1, 0, 0)));
-			break;
-		end;
-		if _0 == Enum.NormalId.Right then
-			newBlockPos = (blockPosition + (Vector3.new(1, 0, 0)));
-			break;
-		end;
-		error("Invalid Enum in placeBlockFromOtherBlock!!!!!!!");
-	until true;
-	print("New block position is " .. newBlockPos.X .. "," .. newBlockPos.Y .. "," .. newBlockPos.Z);
-	if not (blocks[tostring(newBlockPos.X) .. "," .. tostring(newBlockPos.Y) .. "," .. tostring(newBlockPos.Z)]) then
-		print("Creating block as " .. block);
-		createBlock(newBlockPos, block);
-	end;
-end;
+		if face == Enum.NormalId.Back then
+			local _0 = blockPosition
+			local _1 = Vector3.new(0, 0, 1)
+			newBlockPos = _0 + _1
+			break
+		end
+		if face == Enum.NormalId.Bottom then
+			local _0 = blockPosition
+			local _1 = Vector3.new(0, -1, 0)
+			newBlockPos = _0 + _1
+			break
+		end
+		if face == Enum.NormalId.Top then
+			local _0 = blockPosition
+			local _1 = Vector3.new(0, 1, 0)
+			newBlockPos = _0 + _1
+			break
+		end
+		if face == Enum.NormalId.Front then
+			local _0 = blockPosition
+			local _1 = Vector3.new(0, 0, -1)
+			newBlockPos = _0 + _1
+			break
+		end
+		if face == Enum.NormalId.Left then
+			local _0 = blockPosition
+			local _1 = Vector3.new(-1, 0, 0)
+			newBlockPos = _0 + _1
+			break
+		end
+		if face == Enum.NormalId.Right then
+			local _0 = blockPosition
+			local _1 = Vector3.new(1, 0, 0)
+			newBlockPos = _0 + _1
+			break
+		end
+		error("Invalid Enum in placeBlockFromOtherBlock!!!!!!!")
+	until true
+	print("New block position is " .. tostring(newBlockPos.X) .. "," .. tostring(newBlockPos.Y) .. "," .. tostring(newBlockPos.Z))
+	local _0 = blocks
+	local _1 = tostring(newBlockPos.X) .. "," .. tostring(newBlockPos.Y) .. "," .. tostring(newBlockPos.Z)
+	if not _0[_1] then
+		print("Creating block as " .. block)
+		createBlock(newBlockPos, block)
+	end
+end
+--[[
+	*
+	* Checks if block can be interacted with
+	* @param player ROBLOX Player
+	* @param block Block, as Part
+	* @returns Array[BlockState, canBeInteractedWith]
+]]
 local function interactCheck(player, block)
 	if player.Character then
-		local head = player.Character:WaitForChild("Head");
+		local head = player.Character:WaitForChild("Head")
 		if head then
-			if typeof(block) == "Instance" then
-				if block.ClassName == "Part" then
+			local _0 = block
+			if typeof(_0) == "Instance" then
+				local _1 = block
+				if _1.ClassName == "Part" then
 					if isBlockReachable(block.Position, head.Position) then
-						local dividedPos = (block.Position / (globals.blockSize));
-						local clickedOnBlock = blocks[tostring(dividedPos.X) .. "," .. tostring(dividedPos.Y) .. "," .. tostring(dividedPos.Z)];
+						-- After all that type checking nonsense we can actually do things
+						local _2 = block.Position
+						local _3 = globals.blockSize
+						local dividedPos = _2 / _3
+						local _4 = blocks
+						local _5 = tostring(dividedPos.X) .. "," .. tostring(dividedPos.Y) .. "," .. tostring(dividedPos.Z)
+						local clickedOnBlock = _4[_5]
 						if clickedOnBlock then
-							return { clickedOnBlock, true };
+							return { clickedOnBlock, true }
 						else
-							print("Clicked on block doesn't exist. Maybe exploits?");
-						end;
-					end;
-				end;
-			end;
-		end;
-	end;
-	return { nil, false };
-end;
+							print("Clicked on block doesn't exist. Maybe exploits?")
+						end
+					end
+				end
+			end
+		end
+	end
+	return { nil, false }
+end
 evtInteract:Connect(function(player, blockUnknown, blockFace, chosenBlock)
-	local face = blockFace;
-	local block = blockUnknown;
-	local _0 = interactCheck(player, block);
-	local clickedOnBlock = _0[1];
-	local interactCheckResult = _0[2];
+	local face = blockFace
+	local block = blockUnknown
+	local _0 = interactCheck(player, block)
+	local clickedOnBlock = _0[1]
+	local interactCheckResult = _0[2]
 	if interactCheckResult and clickedOnBlock then
 		if clickedOnBlock.interactable then
-			print("Interacted block is interactable. Interacting instead of placing");
-			clickedOnBlock:interact(player, face);
-		end;
-		print("Placing Block");
-		placeBlockFromOtherBlock(player, clickedOnBlock.position, face, chosenBlock);
-	end;
-end);
+			print("Interacted block is interactable. Interacting instead of placing")
+			clickedOnBlock:interact(player, face)
+		end
+		print("Placing Block")
+		placeBlockFromOtherBlock(player, clickedOnBlock.position, face, chosenBlock)
+	end
+end)
 local function deleteBlock(block)
-	if blocks[tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)] == nil then
-		warn("Deleting a block that doesn't exist in blocks list. There's an issue here. Proceeding anyways.");
-	end;
-	block:destroyBlock();
-	blocks[tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)] = nil;
-end;
+	local _0 = blocks
+	local _1 = tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)
+	if _0[_1] == nil then
+		warn("Deleting a block that doesn't exist in blocks list. There's an issue here. Proceeding anyways.")
+	end
+	block:destroyBlock()
+	local _2 = blocks
+	local _3 = tostring(block.position.X) .. "," .. tostring(block.position.Y) .. "," .. tostring(block.position.Z)
+	-- ▼ Map.delete ▼
+	_2[_3] = nil
+	-- ▲ Map.delete ▲
+end
 evtDestroy:Connect(function(player, blockUnknown)
-	local block = blockUnknown;
-	local _0 = interactCheck(player, block);
-	local clickedOnBlock = _0[1];
-	local interactCheckResult = _0[2];
+	local block = blockUnknown
+	local _0 = interactCheck(player, block)
+	local clickedOnBlock = _0[1]
+	local interactCheckResult = _0[2]
 	if interactCheckResult and clickedOnBlock then
-		if not (clickedOnBlock.unbreakable) then
-			deleteBlock(clickedOnBlock);
-		end;
-	end;
-end);
+		if not clickedOnBlock.unbreakable then
+			deleteBlock(clickedOnBlock)
+		end
+	end
+end)
 local Blocks = {
-	blocks = blocks;
-	createBlock = createBlock;
-	deleteBlock = deleteBlock;
-	fill = fill;
-	placeBlockFromOtherBlock = placeBlockFromOtherBlock;
-	createBlocksFromArray = createBlocksFromArray;
-	getCorrectBlockState = getCorrectBlockState;
-};
-exports.Blocks, exports.BlockData = Blocks, BlockData;
-return exports;
+	blocks = blocks,
+	createBlock = createBlock,
+	deleteBlock = deleteBlock,
+	fill = fill,
+	placeBlockFromOtherBlock = placeBlockFromOtherBlock,
+	createBlocksFromArray = createBlocksFromArray,
+	getCorrectBlockState = getCorrectBlockState,
+}
+return {
+	Blocks = Blocks,
+	BlockData = BlockData,
+}
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Script" referent="35">
+      <Item class="Script" referent="37">
         <Properties>
           <string name="Name">Main</string>
-          <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local startGeneration, onGenerationEnd;
-local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
-local SimplexGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "SimplexGen").SimplexGenerateChunk;
-local Net = TS.import(script, TS.getModule(script, "net").out);
-local FlatIslandGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "FlatIslandGen").FlatIslandGenerateChunk;
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local OpenGui = Net.CreateEvent("OpenGui");
-local CloseGui = Net.CreateEvent("CloseGui");
-local WGSelection = Net.CreateEvent("WGSelection");
-print("[Info]: ServerMain");
-local generator = "";
+          <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks
+local SimplexGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "SimplexGen").SimplexGenerateChunk
+local Net = TS.import(script, TS.getModule(script, "net").out)
+local FlatIslandGenerateChunk = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "FlatIslandGen").FlatIslandGenerateChunk
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local OpenGui = Net.CreateEvent("OpenGui")
+local CloseGui = Net.CreateEvent("CloseGui")
+local WGSelection = Net.CreateEvent("WGSelection")
+local GenTotal = Net.CreateEvent("GenProgressTotalRecieved")
+local GenUpdate = Net.CreateEvent("GenProgressUpdate")
+print("[Info]: ServerMain")
+local generator = ""
 local function createChunk(cx, cy)
-	local _0 = generator;
+	local startTime = tick()
 	repeat
-		if _0 == "Simplex" then
-			SimplexGenerateChunk(cx, cy);
-			break;
-		end;
-		if _0 == "FlatIsland" then
-			FlatIslandGenerateChunk(cx, cy);
-			break;
-		end;
-		if _0 == "Plane" then
-			Blocks.fill(Vector3.new(globals.chunkSize.X * cx, 0, globals.chunkSize.Y * cy), Vector3.new((globals.chunkSize.X * cx) + globals.chunkSize.X, 0, (globals.chunkSize.Y * cy) + globals.chunkSize.Y), "obsidian");
-			break;
-		end;
-	until true;
-	wait();
-end;
-game:GetService("Players").CharacterAutoLoads = false;
-local firstJoiningPlayer;
-local alreadySetFirstPlayer = false;
+		if generator == "Simplex" then
+			SimplexGenerateChunk(cx, cy)
+			break
+		end
+		if generator == "FlatIsland" then
+			FlatIslandGenerateChunk(cx, cy)
+			break
+		end
+		if generator == "Plane" then
+			Blocks.fill(Vector3.new(globals.chunkSize.X * cx, 0, globals.chunkSize.Y * cy), Vector3.new((globals.chunkSize.X * cx) + globals.chunkSize.X, 0, (globals.chunkSize.Y * cy) + globals.chunkSize.Y), "obsidian")
+			break
+		end
+	until true
+	local t = tick() - startTime
+	print("createChunk took", t, "seconds")
+	wait()
+end
+game:GetService("Players").CharacterAutoLoads = false
+local firstJoiningPlayer
+local alreadySetFirstPlayer = false
 game:GetService("Players").PlayerAdded:Connect(function(player)
-	if not (alreadySetFirstPlayer) then
-		firstJoiningPlayer = player;
-		print("First player is", player.Name);
-		OpenGui:SendToPlayer(player, "WGS");
-		alreadySetFirstPlayer = true;
-	end;
-end);
+	if not alreadySetFirstPlayer then
+		firstJoiningPlayer = player
+		print("First player is", player.Name)
+		OpenGui:SendToPlayer(player, "WGS")
+		alreadySetFirstPlayer = true
+	end
+end)
+local startGeneration
 WGSelection:Connect(function(plr, Generator)
 	if plr.Name == firstJoiningPlayer.Name then
-		generator = Generator;
-		print("[Info]: User chose " .. generator .. "generator.");
-		startGeneration();
+		generator = Generator
+		print("[Info]: User chose " .. generator .. "generator.")
+		startGeneration()
 	else
-		warn("[Warn]: Player that is not first player has selected a WorldGen. Ignoring");
-	end;
-end);
+		warn("[Warn]: Player that is not first player has selected a WorldGen. Ignoring")
+	end
+end)
+local i = 0
+local function incrementProg()
+	i += 1
+	GenUpdate:SendToAllPlayers(i)
+end
+local onGenerationEnd
 function startGeneration()
-	createChunk(0, 0);
-	createChunk(0, 1);
-	createChunk(-1, 0);
-	createChunk(-1, 1);
-	createChunk(1, 0);
-	createChunk(1, 1);
-	createChunk(-1, -1);
-	createChunk(0, -1);
-	createChunk(1, -1);
-	onGenerationEnd();
-end;
+	CloseGui:SendToPlayer(firstJoiningPlayer, "WGS")
+	OpenGui:SendToAllPlayers("WGP")
+	GenTotal:SendToAllPlayers(9)
+	GenUpdate:SendToAllPlayers(0)
+	--[[
+		-1,1  0,1  1,1
+		-1,0, 0,0  1,0
+		-1,-1 0,-1 1,-1
+	]]
+	createChunk(0, 0)
+	incrementProg()
+	createChunk(0, 1)
+	incrementProg()
+	createChunk(-1, 0)
+	incrementProg()
+	createChunk(-1, 1)
+	incrementProg()
+	createChunk(1, 0)
+	incrementProg()
+	createChunk(1, 1)
+	incrementProg()
+	createChunk(-1, -1)
+	incrementProg()
+	createChunk(0, -1)
+	incrementProg()
+	createChunk(1, -1)
+	incrementProg()
+	onGenerationEnd()
+end
 function onGenerationEnd()
-	local c = 0;
-	TS.map_forEach(Blocks.blocks, function()
-		c = c + 1;
-	end);
-	print(c, "blocks created");
-	game:GetService("Players").CharacterAutoLoads = true;
-	TS.array_forEach(game:GetService("Players"):GetChildren(), function(player)
-		player:LoadCharacter();
-	end);
-	CloseGui:SendToPlayer(firstJoiningPlayer, "WGS");
-end;
+	local c = 0
+	local _0 = Blocks.blocks
+	local _1 = function()
+		c += 1
+	end
+	-- ▼ ReadonlyMap.forEach ▼
+	for _2, _3 in pairs(_0) do
+		_1(_3, _2, _0)
+	end
+	-- ▲ ReadonlyMap.forEach ▲
+	print(c, "blocks created")
+	game:GetService("Players").CharacterAutoLoads = true
+	CloseGui:SendToPlayer(firstJoiningPlayer, "WGP")
+	local _2 = game:GetService("Players"):GetChildren()
+	local _3 = function(player)
+		player:LoadCharacter()
+	end
+	-- ▼ ReadonlyArray.forEach ▼
+	for _4, _5 in ipairs(_2) do
+		_3(_5, _4 - 1, _2)
+	end
+	-- ▲ ReadonlyArray.forEach ▲
+end
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="36">
+      <Item class="Folder" referent="38">
         <Properties>
           <string name="Name">WorldGen</string>
         </Properties>
-        <Item class="ModuleScript" referent="37">
-          <Properties>
-            <string name="Name">FlatIslandGen</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local function FlatIslandGenerateChunk(cx, cy)
-	do
-		local x = 0 + (globals.chunkSize.X * cx);
-		while x < globals.chunkSize.X + (globals.chunkSize.X * cx) do
-			do
-				local z = 0 + (globals.chunkSize.Y * cy);
-				while z < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
-					local ypos = math.floor(globals.primaryGenerationHeight / 2);
-					Blocks.createBlock(Vector3.new(x, ypos, z), "grass");
-					local i = ypos - 1;
-					while i > ypos - math.floor(globals.dirtToStoneHeight / 2) do
-						Blocks.createBlock(Vector3.new(x, i, z), "dirt");
-						i = i - 1;
-					end;
-					while i > 0 do
-						Blocks.createBlock(Vector3.new(x, i, z), "stone");
-						i = i - 1;
-					end;
-					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian");
-					z = z + 1;
-				end;
-			end;
-			x = x + 1;
-		end;
-	end;
-end;
-exports.FlatIslandGenerateChunk = FlatIslandGenerateChunk;
-return exports;
-]]></string>
-          </Properties>
-        </Item>
-        <Item class="ModuleScript" referent="38">
-          <Properties>
-            <string name="Name">Simplex</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local SimplexNoise;
-do
-	SimplexNoise = setmetatable({}, {
-		__tostring = function() return "SimplexNoise" end;
-	});
-	SimplexNoise.__index = SimplexNoise;
-	function SimplexNoise.new(...)
-		local self = setmetatable({}, SimplexNoise);
-		self:constructor(...);
-		return self;
-	end;
-	function SimplexNoise:constructor()
-		local r = math;
-		self.grad3 = { { 1, 1, 0 }, { -1, 1, 0 }, { 1, -1, 0 }, { -1, -1, 0 }, { 1, 0, 1 }, { -1, 0, 1 }, { 1, 0, -1 }, { -1, 0, -1 }, { 0, 1, 1 }, { 0, -1, 1 }, { 0, 1, -1 }, { 0, -1, -1 } };
-		self.p = {};
-		do
-			local i = 0;
-			while i < 256 do
-				local _0 = self.p;
-				_0[i + 1] = math.floor(r.random() * 256);
-				i = i + 1;
-			end;
-		end;
-		self.perm = {};
-		do
-			local i = 0;
-			while i < 512 do
-				local _0 = self.perm;
-				_0[i + 1] = self.p[bit32.band(i, 255) + 1];
-				i = i + 1;
-			end;
-		end;
-		self.simplex = { { 0, 1, 2, 3 }, { 0, 1, 3, 2 }, { 0, 0, 0, 0 }, { 0, 2, 3, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 3, 0 }, { 0, 2, 1, 3 }, { 0, 0, 0, 0 }, { 0, 3, 1, 2 }, { 0, 3, 2, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 3, 2, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 0, 3 }, { 0, 0, 0, 0 }, { 1, 3, 0, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 3, 0, 1 }, { 2, 3, 1, 0 }, { 1, 0, 2, 3 }, { 1, 0, 3, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 3, 1 }, { 0, 0, 0, 0 }, { 2, 1, 3, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 1, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 0, 1, 2 }, { 3, 0, 2, 1 }, { 0, 0, 0, 0 }, { 3, 1, 2, 0 }, { 2, 1, 0, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 1, 0, 2 }, { 0, 0, 0, 0 }, { 3, 2, 0, 1 }, { 3, 2, 1, 0 } };
-	end;
-	function SimplexNoise:dot(g, x, y)
-		return g[1] * x + g[2] * y;
-	end;
-	function SimplexNoise:noise(xin, yin)
-		local n0;
-		local n1;
-		local n2;
-		local F2 = 0.5 * (math.sqrt(3.0) - 1.0);
-		local s = (xin + yin) * F2;
-		local i = math.floor(xin + s);
-		local j = math.floor(yin + s);
-		local G2 = (3.0 - math.sqrt(3.0)) / 6.0;
-		local t = (i + j) * G2;
-		local X0 = i - t;
-		local Y0 = j - t;
-		local x0 = xin - X0;
-		local y0 = yin - Y0;
-		local i1;
-		local j1;
-		if x0 > y0 then
-			i1 = 1;
-			j1 = 0;
-		else
-			i1 = 0;
-			j1 = 1;
-		end;
-		local x1 = x0 - i1 + G2;
-		local y1 = y0 - j1 + G2;
-		local x2 = x0 - 1.0 + 2.0 * G2;
-		local y2 = y0 - 1.0 + 2.0 * G2;
-		local ii = bit32.band(i, 255);
-		local jj = bit32.band(j, 255);
-		local gi0 = self.perm[ii + self.perm[jj + 1] + 1] % 12;
-		local gi1 = self.perm[ii + i1 + self.perm[jj + j1 + 1] + 1] % 12;
-		local gi2 = self.perm[ii + 1 + self.perm[jj + 1 + 1] + 1] % 12;
-		local t0 = 0.5 - x0 * x0 - y0 * y0;
-		if t0 < 0 then
-			n0 = 0.0;
-		else
-			t0 = t0 * (t0);
-			n0 = t0 * t0 * self:dot(self.grad3[gi0 + 1], x0, y0);
-		end;
-		local t1 = 0.5 - x1 * x1 - y1 * y1;
-		if t1 < 0 then
-			n1 = 0.0;
-		else
-			t1 = t1 * (t1);
-			n1 = t1 * t1 * self:dot(self.grad3[gi1 + 1], x1, y1);
-		end;
-		local t2 = 0.5 - x2 * x2 - y2 * y2;
-		if t2 < 0 then
-			n2 = 0.0;
-		else
-			t2 = t2 * (t2);
-			n2 = t2 * t2 * self:dot(self.grad3[gi2 + 1], x2, y2);
-		end;
-		return 70.0 * (n0 + n1 + n2);
-	end;
-end;
-exports.SimplexNoise = SimplexNoise;
-return exports;
-]]></string>
-          </Properties>
-        </Item>
         <Item class="ModuleScript" referent="39">
           <Properties>
-            <string name="Name">SimplexGen</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks;
-local SimplexNoise = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "Simplex").SimplexNoise;
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local simplex = SimplexNoise.new();
-local function SimplexGenerateChunk(cx, cy)
+            <string name="Name">FlatIslandGen</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local function FlatIslandGenerateChunk(cx, cy)
+	-- let returnArray: Array<BlockData> = [];
 	do
-		local x = 0 + (globals.chunkSize.X * cx);
-		while x < globals.chunkSize.X + (globals.chunkSize.X * cx) do
+		local _0 = 0 + (globals.chunkSize.X * cx)
+		while _0 < globals.chunkSize.X + (globals.chunkSize.X * cx) do
+			local x = _0
 			do
-				local z = 0 + (globals.chunkSize.Y * cy);
-				while z < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
-					local ypos = math.floor(simplex:noise(x / globals.simplexNoiseDividend, z / globals.simplexNoiseDividend) * globals.simplexNoiseScale) + globals.primaryGenerationHeight;
-					Blocks.createBlock(Vector3.new(x, ypos, z), "grass");
-					local i = ypos - 1;
-					while i > ypos - globals.dirtToStoneHeight do
-						Blocks.createBlock(Vector3.new(x, i, z), "dirt");
-						i = i - 1;
-					end;
+				local _1 = 0 + (globals.chunkSize.Y * cy)
+				while _1 < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
+					local z = _1
+					local ypos = math.floor(globals.primaryGenerationHeight / 2)
+					-- let blockData = new BlockData(new Vector3(x, ypos, z), "grass");
+					-- returnArray.push(blockData);
+					Blocks.createBlock(Vector3.new(x, ypos, z), "grass")
+					local i = ypos - 1
+					while i > ypos - math.floor(globals.dirtToStoneHeight / 2) do
+						-- returnArray.push(new BlockData(new Vector3(x, i, z), "dirt"));
+						Blocks.createBlock(Vector3.new(x, i, z), "dirt")
+						i -= 1
+					end
 					while i > 0 do
-						Blocks.createBlock(Vector3.new(x, i, z), "stone");
-						i = i - 1;
-					end;
-					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian");
-					z = z + 1;
-				end;
-			end;
-			x = x + 1;
-		end;
-	end;
-	wait();
-end;
-exports.SimplexGenerateChunk = SimplexGenerateChunk;
-return exports;
+						Blocks.createBlock(Vector3.new(x, i, z), "stone")
+						i -= 1
+					end
+					-- returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
+					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian")
+					_1 = z
+					_1 += 1
+				end
+			end
+			_0 = x
+			_0 += 1
+		end
+	end
+	-- wait();
+	-- return returnArray;
+end
+return {
+	FlatIslandGenerateChunk = FlatIslandGenerateChunk,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="40">
+          <Properties>
+            <string name="Name">Simplex</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+-- Ported from Stefan Gustavson's java implementation
+-- http://staffwww.itn.liu.se/~stegu/simplexnoise/simplexnoise.pdf
+-- Read Stefan's excellent paper for details on how this code works.
+-- 
+-- Sean McCullough banksean@gmail.com
+-- Modified by person4268 to get it working in roblox-ts's slimmed down version of typescript that hates the any type
+--[[
+	*
+	* You can pass in a random number generator object if you like.
+	* It is assumed to have a random() method.
+]]
+local SimplexNoise
+do
+	SimplexNoise = setmetatable({}, {
+		__tostring = function()
+			return "SimplexNoise"
+		end,
+	})
+	SimplexNoise.__index = SimplexNoise
+	function SimplexNoise.new(...)
+		local self = setmetatable({}, SimplexNoise)
+		self:constructor(...)
+		return self
+	end
+	function SimplexNoise:constructor()
+		local r = math
+		self.grad3 = { { 1, 1, 0 }, { -1, 1, 0 }, { 1, -1, 0 }, { -1, -1, 0 }, { 1, 0, 1 }, { -1, 0, 1 }, { 1, 0, -1 }, { -1, 0, -1 }, { 0, 1, 1 }, { 0, -1, 1 }, { 0, 1, -1 }, { 0, -1, -1 } }
+		self.p = {}
+		do
+			local _0 = 0
+			while _0 < 256 do
+				local i = _0
+				self.p[(i + 1)] = math.floor(r.random() * 256)
+				_0 = i
+				_0 += 1
+			end
+		end
+		-- To remove the need for index wrapping, double the permutation table length
+		self.perm = {}
+		do
+			local _0 = 0
+			while _0 < 512 do
+				local i = _0
+				self.perm[(i + 1)] = self.p[bit32.band(i, 255) + 1]
+				_0 = i
+				_0 += 1
+			end
+		end
+		-- A lookup table to traverse the simplex around a given point in 4D.
+		-- Details can be found where this table is used, in the 4D noise method.
+		self.simplex = { { 0, 1, 2, 3 }, { 0, 1, 3, 2 }, { 0, 0, 0, 0 }, { 0, 2, 3, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 3, 0 }, { 0, 2, 1, 3 }, { 0, 0, 0, 0 }, { 0, 3, 1, 2 }, { 0, 3, 2, 1 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 3, 2, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 1, 2, 0, 3 }, { 0, 0, 0, 0 }, { 1, 3, 0, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 3, 0, 1 }, { 2, 3, 1, 0 }, { 1, 0, 2, 3 }, { 1, 0, 3, 2 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 3, 1 }, { 0, 0, 0, 0 }, { 2, 1, 3, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 2, 0, 1, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 0, 1, 2 }, { 3, 0, 2, 1 }, { 0, 0, 0, 0 }, { 3, 1, 2, 0 }, { 2, 1, 0, 3 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, { 3, 1, 0, 2 }, { 0, 0, 0, 0 }, { 3, 2, 0, 1 }, { 3, 2, 1, 0 } }
+	end
+	function SimplexNoise:dot(g, x, y)
+		return g[1] * x + g[2] * y
+	end
+	function SimplexNoise:noise(xin, yin)
+		local n0
+		local n1
+		local n2
+		-- Skew the input space to determine which simplex cell we're in
+		local F2 = 0.5 * (math.sqrt(3.0) - 1.0)
+		local s = (xin + yin) * F2
+		local i = math.floor(xin + s)
+		local j = math.floor(yin + s)
+		local G2 = (3.0 - math.sqrt(3.0)) / 6.0
+		local t = (i + j) * G2
+		local X0 = i - t
+		local Y0 = j - t
+		local x0 = xin - X0
+		local y0 = yin - Y0
+		-- For the 2D case, the simplex shape is an equilateral triangle.
+		-- Determine which simplex we are in.
+		local i1
+		local j1
+		if x0 > y0 then
+			i1 = 1
+			j1 = 0
+		else
+			i1 = 0
+			j1 = 1
+		end
+		-- A step of (1,0) in (i,j) means a step of (1-c,-c) in (x,y), and
+		-- a step of (0,1) in (i,j) means a step of (-c,1-c) in (x,y), where
+		-- c = (3-sqrt(3))/6
+		local x1 = x0 - i1 + G2
+		local y1 = y0 - j1 + G2
+		local x2 = x0 - 1.0 + 2.0 * G2
+		local y2 = y0 - 1.0 + 2.0 * G2
+		-- Work out the hashed gradient indices of the three simplex corners
+		local ii = bit32.band(i, 255)
+		local jj = bit32.band(j, 255)
+		local gi0 = self.perm[ii + self.perm[jj + 1] + 1] % 12
+		local gi1 = self.perm[ii + i1 + self.perm[jj + j1 + 1] + 1] % 12
+		local gi2 = self.perm[ii + 1 + self.perm[jj + 1 + 1] + 1] % 12
+		-- Calculate the contribution from the three corners
+		local t0 = 0.5 - x0 * x0 - y0 * y0
+		if t0 < 0 then
+			n0 = 0.0
+		else
+			t0 *= t0
+			n0 = t0 * t0 * self:dot(self.grad3[gi0 + 1], x0, y0)
+		end
+		local t1 = 0.5 - x1 * x1 - y1 * y1
+		if t1 < 0 then
+			n1 = 0.0
+		else
+			t1 *= t1
+			n1 = t1 * t1 * self:dot(self.grad3[gi1 + 1], x1, y1)
+		end
+		local t2 = 0.5 - x2 * x2 - y2 * y2
+		if t2 < 0 then
+			n2 = 0.0
+		else
+			t2 *= t2
+			n2 = t2 * t2 * self:dot(self.grad3[gi2 + 1], x2, y2)
+		end
+		-- Add contributions from each corner to get the final noise value.
+		-- The result is scaled to return values in the interval [-1,1].
+		return 70.0 * (n0 + n1 + n2)
+	end
+end
+return {
+	SimplexNoise = SimplexNoise,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="41">
+          <Properties>
+            <string name="Name">SimplexGen</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Blocks = TS.import(script, game:GetService("ServerScriptService"), "TS", "Blocks").Blocks
+local SimplexNoise = TS.import(script, game:GetService("ServerScriptService"), "TS", "WorldGen", "Simplex").SimplexNoise
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local simplex = SimplexNoise.new()
+--[[
+	function fillArray(input: Array<BlockData>, startPos: Vector3, endPos: Vector3, block: blockIds): Array<BlockData> {
+	let modified: Array<BlockData> = input;
+	for (let y = startPos.Y; y <= endPos.Y; y++) {
+	modified.push(new BlockData(new Vector3(startPos.X, y, startPos.Z), block));
+	}
+	return modified;
+	}
+	function fillEmpty(input: Array<BlockData>): Array<BlockData> {
+	let modified = input;
+	for (let i = 0; i < input.size(); i++) {
+	let block = input[i];
+	modified = fillArray(modified, block.position.sub(new Vector3(0, 1, 0)), new Vector3(block.position.X, block.position.Y - 7, block.position.Z), "dirt");
+	modified = fillArray(modified, block.position.sub(new Vector3(0, 8, 0)), new Vector3(block.position.X, 1, block.position.Z), "stone");
+	};
+	return modified;
+	}
+]]
+-- function SimplexGenerateChunk(cx: number, cy: number): Array<BlockData> {
+local function SimplexGenerateChunk(cx, cy)
+	-- let returnArray: Array<BlockData> = [];
+	do
+		local _0 = 0 + (globals.chunkSize.X * cx)
+		while _0 < globals.chunkSize.X + (globals.chunkSize.X * cx) do
+			local x = _0
+			do
+				local _1 = 0 + (globals.chunkSize.Y * cy)
+				while _1 < globals.chunkSize.Y + (globals.chunkSize.Y * cy) do
+					local z = _1
+					local ypos = math.floor(simplex:noise(x / globals.simplexNoiseDividend, z / globals.simplexNoiseDividend) * globals.simplexNoiseScale) + globals.primaryGenerationHeight
+					-- let blockData = new BlockData(new Vector3(x, ypos, z), "grass");
+					-- returnArray.push(blockData);
+					Blocks.createBlock(Vector3.new(x, ypos, z), "grass")
+					-- print(blockData.position.X, blockData.position.Y, blockData.position.Z)
+					local i = ypos - 1
+					while i > ypos - globals.dirtToStoneHeight do
+						-- returnArray.push(new BlockData(new Vector3(x, i, z), "dirt"));
+						Blocks.createBlock(Vector3.new(x, i, z), "dirt")
+						-- print("Placing dirt at", x, i, z);
+						i -= 1
+					end
+					while i > 0 do
+						-- returnArray.push(new BlockData(new Vector3(x, i, z), "stone"));
+						Blocks.createBlock(Vector3.new(x, i, z), "stone")
+						-- print("Placing stone at", x, i, z);
+						i -= 1
+					end
+					-- returnArray.push(new BlockData(new Vector3(x, 0, z), "obsidian"));
+					Blocks.createBlock(Vector3.new(x, 0, z), "obsidian")
+					_1 = z
+					_1 += 1
+				end
+			end
+			-- wait()
+			_0 = x
+			_0 += 1
+		end
+	end
+	wait()
+	-- return returnArray;
+end
+return {
+	SimplexGenerateChunk = SimplexGenerateChunk,
+}
 ]]></string>
           </Properties>
         </Item>
       </Item>
-      <Item class="Folder" referent="40">
+      <Item class="Folder" referent="42">
         <Properties>
           <string name="Name">textures</string>
         </Properties>
-        <Item class="ModuleScript" referent="41">
-          <Properties>
-            <string name="Name">Generic4Side1Top1Bottom</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local exports = {};
-local function createTexture(assetId, side)
-	local texture = Instance.new("Decal");
-	texture.Face = side;
-	texture.Texture = assetId;
-	return texture;
-end;
-local function Generic4Side1Top1Bottom(block, textureSide, textureTop, textureBottom)
-	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block;
-	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block;
-	createTexture(textureBottom, Enum.NormalId.Bottom).Parent = block.block;
-end;
-exports.Generic4Side1Top1Bottom = Generic4Side1Top1Bottom;
-return exports;
-]]></string>
-          </Properties>
-        </Item>
-        <Item class="ModuleScript" referent="42">
-          <Properties>
-            <string name="Name">Generic5Side1Top</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local exports = {};
-local function createTexture(assetId, side)
-	local texture = Instance.new("Decal");
-	texture.Face = side;
-	texture.Texture = assetId;
-	return texture;
-end;
-local function Generic5Side1Top(block, textureSide, textureTop)
-	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block;
-	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block;
-	createTexture(textureSide, Enum.NormalId.Bottom).Parent = block.block;
-end;
-exports.Generic5Side1Top = Generic5Side1Top;
-return exports;
-]]></string>
-          </Properties>
-        </Item>
         <Item class="ModuleScript" referent="43">
           <Properties>
-            <string name="Name">Generic6Side</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local exports = {};
+            <string name="Name">Generic4Side1Top1Bottom</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
 local function createTexture(assetId, side)
-	local texture = Instance.new("Decal");
-	texture.Face = side;
-	texture.Texture = assetId;
-	return texture;
-end;
-local function Generic6Side(block, texture)
-	createTexture(texture, Enum.NormalId.Back).Parent = block.block;
-	createTexture(texture, Enum.NormalId.Top).Parent = block.block;
-	createTexture(texture, Enum.NormalId.Left).Parent = block.block;
-	createTexture(texture, Enum.NormalId.Front).Parent = block.block;
-	createTexture(texture, Enum.NormalId.Right).Parent = block.block;
-	createTexture(texture, Enum.NormalId.Bottom).Parent = block.block;
-end;
-exports.Generic6Side = Generic6Side;
-return exports;
+	local texture = Instance.new("Decal")
+	texture.Face = side
+	texture.Texture = assetId
+	return texture
+end
+local function Generic4Side1Top1Bottom(block, textureSide, textureTop, textureBottom)
+	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block
+	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block
+	createTexture(textureBottom, Enum.NormalId.Bottom).Parent = block.block
+end
+return {
+	Generic4Side1Top1Bottom = Generic4Side1Top1Bottom,
+}
 ]]></string>
           </Properties>
         </Item>
         <Item class="ModuleScript" referent="44">
           <Properties>
+            <string name="Name">Generic5Side1Top</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local function createTexture(assetId, side)
+	local texture = Instance.new("Decal")
+	texture.Face = side
+	texture.Texture = assetId
+	return texture
+end
+local function Generic5Side1Top(block, textureSide, textureTop)
+	createTexture(textureSide, Enum.NormalId.Back).Parent = block.block
+	createTexture(textureTop, Enum.NormalId.Top).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Left).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Front).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Right).Parent = block.block
+	createTexture(textureSide, Enum.NormalId.Bottom).Parent = block.block
+end
+return {
+	Generic5Side1Top = Generic5Side1Top,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="45">
+          <Properties>
+            <string name="Name">Generic6Side</string>
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local function createTexture(assetId, side)
+	local texture = Instance.new("Decal")
+	texture.Face = side
+	texture.Texture = assetId
+	return texture
+end
+local function Generic6Side(block, texture)
+	createTexture(texture, Enum.NormalId.Back).Parent = block.block
+	createTexture(texture, Enum.NormalId.Top).Parent = block.block
+	createTexture(texture, Enum.NormalId.Left).Parent = block.block
+	createTexture(texture, Enum.NormalId.Front).Parent = block.block
+	createTexture(texture, Enum.NormalId.Right).Parent = block.block
+	createTexture(texture, Enum.NormalId.Bottom).Parent = block.block
+end
+return {
+	Generic6Side = Generic6Side,
+}
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="46">
+          <Properties>
             <string name="Name">TextureHandler</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local Generic6Side = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic6Side").Generic6Side;
-local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default;
-local Generic4Side1Top1Bottom = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic4Side1Top1Bottom").Generic4Side1Top1Bottom;
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Generic6Side = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic6Side").Generic6Side
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local Generic4Side1Top1Bottom = TS.import(script, game:GetService("ServerScriptService"), "TS", "textures", "Generic4Side1Top1Bottom").Generic4Side1Top1Bottom
+--[[
+	*
+	* Randomly rotates a block in increments of 90 degrees to make tiling look a little better
+	* @param block
+]]
 local function randomRotate(block, rotateOnX, rotateOnY, rotateOnZ)
-	local possibleRotations = { 0, 90, 180, 270 };
+	local possibleRotations = { 0, 90, 180, 270 }
 	if rotateOnX then
-		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
-		block.block.Orientation = (block.block.Orientation + (Vector3.new(rotation, 0, 0)));
-	end;
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1]
+		local _0 = block.block.Orientation
+		local _1 = Vector3.new(rotation, 0, 0)
+		block.block.Orientation = _0 + _1
+	end
 	if rotateOnY then
-		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
-		block.block.Orientation = (block.block.Orientation + (Vector3.new(0, rotation, 0)));
-	end;
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1]
+		local _0 = block.block.Orientation
+		local _1 = Vector3.new(0, rotation, 0)
+		block.block.Orientation = _0 + _1
+	end
 	if rotateOnZ then
-		local rotation = possibleRotations[math.floor(math.random() * 4) + 1];
-		block.block.Orientation = (block.block.Orientation + (Vector3.new(0, 0, rotation)));
-	end;
-end;
+		local rotation = possibleRotations[math.floor(math.random() * 4) + 1]
+		local _0 = block.block.Orientation
+		local _1 = Vector3.new(0, 0, rotation)
+		block.block.Orientation = _0 + _1
+	end
+end
+--[[
+	*
+	* Finds the correct TextureHandler for block.id and applies it to the block
+	* @param block
+]]
 local function applyTexture(block)
-	local _0 = block.id;
+	local _0 = block.id
 	repeat
 		if _0 == "grass" then
-			Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt);
-			break;
-		end;
+			-- randomRotate(block, false, true, false);
+			Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt)
+			break
+		end
 		if _0 == "dirt" then
-			Generic6Side(block, globals.textures.dirt);
-			break;
-		end;
+			Generic6Side(block, globals.textures.dirt)
+			break
+		end
 		if _0 == "stone" then
-			Generic6Side(block, globals.textures.stone);
-			break;
-		end;
+			Generic6Side(block, globals.textures.stone)
+			break
+		end
 		if _0 == "brick" then
-			Generic6Side(block, globals.textures.brick);
-			break;
-		end;
+			Generic6Side(block, globals.textures.brick)
+			break
+		end
 		if _0 == "obsidian" then
-			Generic6Side(block, globals.textures.obsidian);
-			break;
-		end;
-		Generic6Side(block, globals.textures.grid);
-		break;
-	until true;
-end;
-exports.default = {
-	applyTexture = applyTexture;
-};
-return exports;
+			Generic6Side(block, globals.textures.obsidian)
+			break
+		end
+		Generic6Side(block, globals.textures.grid)
+		break
+	until true
+end
+local default = {
+	applyTexture = applyTexture,
+}
+return {
+	default = default,
+}
 ]]></string>
           </Properties>
         </Item>
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="45">
+  <Item class="StarterPlayer" referent="47">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="46">
+    <Item class="StarterPlayerScripts" referent="48">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="47">
+      <Item class="Folder" referent="49">
         <Properties>
           <string name="Name">TS</string>
         </Properties>
-        <Item class="LocalScript" referent="48">
+        <Item class="LocalScript" referent="50">
           <Properties>
             <string name="Name">Main</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local initalizeAllGuis = TS.import(script, script.Parent, "gui", "Gui").initalizeAllGuis;
-print("[Info]: ClientMain");
-initalizeAllGuis();
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local initalizeAllGuis = TS.import(script, script.Parent, "gui", "Gui").initalizeAllGuis
+print("[Info]: ClientMain")
+initalizeAllGuis()
 ]]></string>
           </Properties>
         </Item>
-        <Item class="LocalScript" referent="49">
+        <Item class="LocalScript" referent="51">
           <Properties>
             <string name="Name">PlacingBreaking</string>
-            <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable;
-local Net = TS.import(script, TS.getModule(script, "net").out);
-local Players = game:GetService("Players");
-local UIS = game:GetService("UserInputService");
-local player = Players.LocalPlayer;
-local mouse = Players.LocalPlayer:GetMouse();
-local hoveredOnBlock;
-local hoveredFace;
-local selectedBlock = "grass";
+            <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local isBlockReachable = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "isBlockReachable").isBlockReachable
+local Net = TS.import(script, TS.getModule(script, "net").out)
+local globals = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "globals").default
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+local mouse = Players.LocalPlayer:GetMouse()
+local hoveredOnBlock
+local hoveredFace
+local selectedBlock = "grass"
 local startHover = TS.async(function(block)
 	local function enableHoverEffect(part)
-		local children = part:GetChildren();
-		TS.array_every(children, function(child, index, array)
-			if (child.ClassName == "Texture") or (child.ClassName == "Decal") then
-				local childTexture = child;
-				childTexture.Transparency = 0.2;
-			end;
-			return true;
-		end);
-	end;
+		local children = part:GetChildren()
+		local _0 = children
+		local _1 = function(child, index, array)
+			local _2 = child
+			local _3 = _2.ClassName == "Texture"
+			if not _3 then
+				local _4 = child
+				_3 = _4.ClassName == "Decal"
+			end
+			if _3 then
+				local childTexture = child
+				childTexture.Transparency = 0.2
+			end
+			return true
+		end
+		-- ▼ ReadonlyArray.every ▼
+		local _2 = true
+		for _3, _4 in ipairs(_0) do
+			if not _1(_4, _3 - 1, _0) then
+				_2 = false
+				break
+			end
+		end
+		-- ▲ ReadonlyArray.every ▲
+	end
 	local function disableHoverEffect(part)
-		local children = part:GetChildren();
-		TS.array_every(children, function(child, index, array)
-			if (child.ClassName == "Texture") or (child.ClassName == "Decal") then
-				local childTexture = child;
-				childTexture.Transparency = 0;
-			end;
-			return true;
-		end);
-	end;
-	enableHoverEffect(block);
-	hoveredOnBlock = block;
-	hoveredFace = mouse.TargetSurface;
+		local children = part:GetChildren()
+		local _0 = children
+		local _1 = function(child, index, array)
+			local _2 = child
+			local _3 = _2.ClassName == "Texture"
+			if not _3 then
+				local _4 = child
+				_3 = _4.ClassName == "Decal"
+			end
+			if _3 then
+				local childTexture = child
+				childTexture.Transparency = 0
+			end
+			return true
+		end
+		-- ▼ ReadonlyArray.every ▼
+		local _2 = true
+		for _3, _4 in ipairs(_0) do
+			if not _1(_4, _3 - 1, _0) then
+				_2 = false
+				break
+			end
+		end
+		-- ▲ ReadonlyArray.every ▲
+	end
+	enableHoverEffect(block)
+	hoveredOnBlock = block
+	hoveredFace = mouse.TargetSurface
 	while true do
 		if mouse.Target ~= block then
-			disableHoverEffect(block);
-			hoveredOnBlock = nil;
-			return nil;
-		end;
-		wait(0.05);
-	end;
-end);
+			disableHoverEffect(block)
+			hoveredOnBlock = nil
+			return nil
+		end
+		wait(0.05)
+	end
+end)
 player.CharacterAdded:Connect(function()
 	if player.Character then
-		local head = player.Character:WaitForChild("Head", 30);
+		local head = player.Character:WaitForChild("Head", 30)
 		if head then
 			while true do
-				if (mouse.Target) and (isBlockReachable(mouse.Target.Position, head.Position)) and (mouse.Target.ClassName == "Part") and (mouse.Target.Parent == game.Workspace:WaitForChild("Blocks")) then
-					startHover(mouse.Target);
-				end;
-				wait();
-			end;
-		end;
-	end;
-end);
+				local _0 = mouse.Target and isBlockReachable(mouse.Target.Position, head.Position)
+				if _0 then
+					local _1 = mouse.Target
+					_0 = _1.ClassName == "Part"
+					if _0 then
+						_0 = mouse.Target.Parent == game.Workspace:WaitForChild("Blocks")
+					end
+				end
+				if _0 then
+					startHover(mouse.Target)
+				end
+				wait()
+			end
+		end
+	end
+end)
 mouse.Button2Down:Connect(function()
 	if hoveredOnBlock then
-		Net.WaitForClientEventAsync("InteractBlock"):andThen(function(event)
-			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
-		end);
-	end;
-end);
+		local _0 = Net.WaitForClientEventAsync("InteractBlock")
+		local _1 = function(event)
+			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock)
+		end
+		_0:andThen(_1)
+	end
+end)
+local function isObsidian(part)
+	local firstDecal = part:FindFirstChild("Decal")
+	if firstDecal then
+		return firstDecal.Texture == globals.textures.obsidian
+	end
+	return false
+end
 mouse.Button1Down:Connect(function()
 	if hoveredOnBlock then
-		Net.WaitForClientEventAsync("DestroyBlock"):andThen(function(event)
-			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
-		end);
-	end;
-end);
+		local _0 = Net.WaitForClientEventAsync("DestroyBlock")
+		local _1 = function(event)
+			event:SendToServer(hoveredOnBlock, hoveredFace, selectedBlock)
+			if hoveredOnBlock and not isObsidian(hoveredOnBlock) then
+				hoveredOnBlock:Destroy()
+			end
+		end
+		_0:andThen(_1)
+	end
+end)
 UIS.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.Keyboard then
-		local _0 = input.KeyCode;
+		local _0 = input.KeyCode
 		repeat
 			if _0 == Enum.KeyCode.One then
-				selectedBlock = "generic";
-				break;
-			end;
+				selectedBlock = "generic"
+				break
+			end
 			if _0 == Enum.KeyCode.Two then
-				selectedBlock = "grass";
-				break;
-			end;
+				selectedBlock = "grass"
+				break
+			end
 			if _0 == Enum.KeyCode.Three then
-				selectedBlock = "dirt";
-				break;
-			end;
+				selectedBlock = "dirt"
+				break
+			end
 			if _0 == Enum.KeyCode.Four then
-				selectedBlock = "stone";
-				break;
-			end;
+				selectedBlock = "stone"
+				break
+			end
 			if _0 == Enum.KeyCode.Five then
-				selectedBlock = "brick";
-				break;
-			end;
-		until true;
-	end;
-end);
+				selectedBlock = "brick"
+				break
+			end
+		until true
+	end
+end)
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="50">
+        <Item class="Folder" referent="52">
           <Properties>
             <string name="Name">gui</string>
           </Properties>
-          <Item class="ModuleScript" referent="51">
-            <Properties>
-              <string name="Name">DebugGui</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local _0 = TS.import(script, script.Parent, "GuiLib");
-local createScreenGui, Gui = _0.createScreenGui, _0.Gui;
-local UITable = TS.import(script, script.Parent, "GuiExtension").UITable;
-local function DebugGui(plrGui)
-	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 300, 0, 300), "Debug", true, true);
-	local guiTestBtn = gui:createGuiButton(gui.mainContainer, "TestButton", nil, UDim2.new(0, 0, 0, 0), nil, "Button");
-	local guiTestLabel = gui:createGuiLabel(guiTestBtn, "Label", UDim2.new(1, 0, 1, 0), UDim2.new(1, 5, 0, 0), nil, "Label");
-	guiTestLabel.TextXAlignment = Enum.TextXAlignment.Left;
-	local clickCounter = 0;
-	guiTestBtn.MouseButton1Click:Connect(function()
-		clickCounter = clickCounter + (1);
-		guiTestLabel.Text = "The button has been clicked " .. tostring(clickCounter) .. " times!";
-		guiTestBtn.Text = tostring(clickCounter);
-	end);
-	local uiTable = UITable.new(gui, gui.mainContainer, { "Column 1", "Column 2", "Column 3" }, UDim2.new(0.9, 0, 0.5, 0), UDim2.new(0.05, 0, 0.4, 0));
-	uiTable:addRow(0, { "lol", "lol but better", "not lol" });
-	uiTable:addRow(1, { "bruh", "bruh", "bruh faster" });
-	uiTable:addRow(2, { "secret", "super secret", "very secret" });
-	uiTable:addRow(3, { "clear", "clear", "super clear" });
-	uiTable.onRowSelect = function(row)
-		local _1 = row;
-		repeat
-			if _1 == 0 then
-				guiTestLabel.Text = "lol row";
-				break;
-			end;
-			if _1 == 1 then
-				guiTestLabel.Text = "bruh row";
-				break;
-			end;
-			if _1 == 2 then
-				guiTestLabel.Text = "Super secret!!";
-				uiTable:removeRow(2);
-				break;
-			end;
-			if _1 == 3 then
-				guiTestLabel.Text = "Destroyed!!!!";
-				uiTable:clearChart();
-				break;
-			end;
-		until true;
-	end;
-	return gui;
-end;
-exports.default = DebugGui;
-return exports;
-]]></string>
-            </Properties>
-          </Item>
-          <Item class="ModuleScript" referent="52">
-            <Properties>
-              <string name="Name">DraggableObject</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local UserInputService = game:GetService("UserInputService");
-local DraggableObject;
-do
-	DraggableObject = setmetatable({}, {
-		__tostring = function() return "DraggableObject" end;
-	});
-	DraggableObject.__index = DraggableObject;
-	function DraggableObject.new(...)
-		local self = setmetatable({}, DraggableObject);
-		self:constructor(...);
-		return self;
-	end;
-	function DraggableObject:constructor(Object, ActuallyDragThis, dragInX, dragInY, resizeInstead)
-		if dragInX == nil then dragInX = true; end;
-		if dragInY == nil then dragInY = true; end;
-		if resizeInstead == nil then resizeInstead = false; end;
-		self.Dragging = false;
-		self.Object = Object;
-		self.ActuallyDragThis = ActuallyDragThis;
-		self.dragInX = dragInX;
-		self.dragInY = dragInY;
-		self.resizeInstead = resizeInstead;
-	end;
-	function DraggableObject:Enable()
-		local object = self.Object;
-		local ActuallyDragThis = self.ActuallyDragThis;
-		local dragInput;
-		local dragStart;
-		local startPos;
-		local preparingToDrag = false;
-		local dragInX = self.dragInX;
-		local dragInY = self.dragInY;
-		local resizeInstead = self.resizeInstead;
-		local function update(input)
-			local delta = (input.Position - (dragStart));
-			local newPosition = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y);
-			local dragThisThing;
-			if ActuallyDragThis then
-				dragThisThing = ActuallyDragThis;
-			else
-				dragThisThing = object;
-			end;
-			if not (resizeInstead) then
-				if dragInX and dragInY then
-					dragThisThing.Position = newPosition;
-				else
-					if dragInX then
-						dragThisThing.Position = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Position.Y.Scale, dragThisThing.Position.Y.Offset);
-					end;
-					if dragInY then
-						dragThisThing.Position = UDim2.new(dragThisThing.Position.X.Scale, dragThisThing.Position.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
-					end;
-				end;
-			else
-				if dragInX and dragInY then
-					dragThisThing.Size = newPosition;
-				else
-					if dragInX then
-						dragThisThing.Size = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Size.Y.Scale, dragThisThing.Size.Y.Offset);
-					end;
-					if dragInY then
-						dragThisThing.Size = UDim2.new(dragThisThing.Size.X.Scale, dragThisThing.Size.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset);
-					end;
-				end;
-			end;
-			return newPosition;
-		end;
-		self.InputBegan = object.InputBegan:Connect(function(input)
-			if (input.UserInputType == Enum.UserInputType.MouseButton1) or (input.UserInputType == Enum.UserInputType.Touch) then
-				preparingToDrag = true;
-				local connection;
-				connection = input.Changed:Connect(function()
-					if (input.UserInputState == Enum.UserInputState.End) and ((self.Dragging) or preparingToDrag) then
-						self.Dragging = false;
-						connection:Disconnect();
-						if (self.DragEnded) and (not (preparingToDrag)) then
-							self.DragEnded();
-						end;
-						preparingToDrag = false;
-					end;
-				end);
-			end;
-		end);
-		self.InputChanged = object.InputChanged:Connect(function(input)
-			if (input.UserInputType == Enum.UserInputType.MouseMovement) or (input.UserInputType == Enum.UserInputType.Touch) then
-				dragInput = input;
-			end;
-		end);
-		self.InputChanged2 = UserInputService.InputChanged:Connect(function(input)
-			if object.Parent == nil then
-				self:Disable();
-				return nil;
-			end;
-			if preparingToDrag then
-				preparingToDrag = false;
-				if self.DragStarted then
-					self.DragStarted();
-				end;
-				self.Dragging = true;
-				dragStart = input.Position;
-				if not (resizeInstead) then
-					if ActuallyDragThis then
-						startPos = ActuallyDragThis.Position;
-					else
-						startPos = object.Position;
-					end;
-				else
-					if ActuallyDragThis then
-						startPos = ActuallyDragThis.Size;
-					else
-						startPos = object.Size;
-					end;
-				end;
-			end;
-			if (input == dragInput) and (self.Dragging) then
-				local newPosition = update(input);
-				if self.Dragged then
-					self.Dragged(newPosition);
-				end;
-			end;
-		end);
-	end;
-	function DraggableObject:Disable()
-		if self.InputBegan then
-			self.InputBegan:Disconnect();
-		end;
-		if self.InputChanged then
-			self.InputChanged:Disconnect();
-		end;
-		if self.InputChanged2 then
-			self.InputChanged2:Disconnect();
-		end;
-		if self.Dragging then
-			self.Dragging = false;
-			if self.DragEnded then
-				self.DragEnded();
-			end;
-		end;
-	end;
-end;
-exports.DraggableObject = DraggableObject;
-return exports;
-]]></string>
-            </Properties>
-          </Item>
           <Item class="ModuleScript" referent="53">
             <Properties>
-              <string name="Name">Gui</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local Net = TS.import(script, TS.getModule(script, "net").out);
-local WorldGeneratorSelector = TS.import(script, script.Parent, "WorldGeneratorSelector").default;
-local DebugGui = TS.import(script, script.Parent, "DebugGui").default;
-local gui = {};
-local function initalizeAllGuis()
-	print("[Info]: Initializing GUIs");
-	local plrGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui");
-	gui["WGS"] = WorldGeneratorSelector(plrGui);
-	if game:GetService("RunService"):IsStudio() then
-		gui["Debug"] = DebugGui(plrGui);
-		gui["Debug"]:open();
-	end;
-end;
-Net.WaitForClientEventAsync("OpenGui"):andThen(function(event)
-	event:Connect(function(guiToOpen)
-		if gui[guiToOpen] then
-			gui[guiToOpen]:open();
-		end;
-	end);
-end);
-Net.WaitForClientEventAsync("CloseGui"):andThen(function(event)
-	event:Connect(function(guiToClose)
-		if gui[guiToClose] then
-			gui[guiToClose]:close();
-		end;
-	end);
-end);
-local function openGui(gui_)
-	if gui_ ~= "" and gui_ then
-		gui[gui_]:open();
-	end;
-end;
-local function closeGui(gui_)
-	if gui_ ~= "" and gui_ then
-		gui[gui_]:close();
-	end;
-end;
-exports.initalizeAllGuis, exports.openGui, exports.closeGui = initalizeAllGuis, openGui, closeGui;
-return exports;
+              <string name="Name">DebugGui</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local _0 = TS.import(script, script.Parent, "GuiLib")
+local createScreenGui = _0.createScreenGui
+local Gui = _0.Gui
+local _1 = TS.import(script, script.Parent, "GuiExtension")
+local UITable = _1.UITable
+local ProgressBar = _1.ProgressBar
+local function DebugGui(plrGui)
+	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 300, 0, 300), "Debug", true, true)
+	local guiTestBtn = gui:createGuiButton(gui.mainContainer, "TestButton", nil, UDim2.new(0, 0, 0, 0), nil, "Button")
+	local guiTestLabel = gui:createGuiLabel(guiTestBtn, "Label", UDim2.new(1, 0, 1, 0), UDim2.new(1, 5, 0, 0), nil, "Label")
+	guiTestLabel.TextXAlignment = Enum.TextXAlignment.Left
+	local clickCounter = 0
+	guiTestBtn.MouseButton1Click:Connect(function()
+		clickCounter += 1
+		guiTestLabel.Text = "The button has been clicked " .. tostring(clickCounter) .. " times!"
+		guiTestBtn.Text = tostring(clickCounter)
+	end)
+	local uiTable = UITable.new(gui, gui.mainContainer, { "Column 1", "Column 2", "Column 3" }, UDim2.new(0.9, 0, 0.2, 0), UDim2.new(0.05, 0, 0.4, 0))
+	uiTable:addRow(0, { "lol", "lol but better", "not lol" })
+	uiTable:addRow(1, { "bruh", "bruh", "bruh faster" })
+	uiTable:addRow(2, { "secret", "super secret", "very secret" })
+	uiTable:addRow(3, { "clear", "clear", "super clear" })
+	uiTable.onRowSelect = function(row)
+		repeat
+			if row == 0 then
+				guiTestLabel.Text = "lol row"
+				break
+			end
+			if row == 1 then
+				guiTestLabel.Text = "bruh row"
+				break
+			end
+			if row == 2 then
+				guiTestLabel.Text = "Super secret!!"
+				uiTable:removeRow(2)
+				break
+			end
+			if row == 3 then
+				guiTestLabel.Text = "Destroyed!!!!"
+				uiTable:clearChart()
+				break
+			end
+		until true
+	end
+	local pb = ProgressBar.new(gui.mainContainer, gui, UDim2.new(0, 0, 0.65, 0), UDim2.new(1, 0, 0.07, 0))
+	return gui
+end
+local default = DebugGui
+return {
+	default = default,
+}
 ]]></string>
             </Properties>
           </Item>
           <Item class="ModuleScript" referent="54">
             <Properties>
-              <string name="Name">GuiExtension</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local function addUDim2(udims, addX, addY)
-	if addX == nil then addX = true; end;
-	if addY == nil then addY = true; end;
-	local udimCounter = UDim2.new();
-	TS.array_forEach(udims, function(udim)
-		if addX and addY then
-			udimCounter = (udimCounter + (udim));
-		end;
-		if addX then
-			udimCounter = UDim2.new(udimCounter.X.Scale + udim.X.Scale, udimCounter.X.Offset + udim.X.Offset, udimCounter.Y.Scale, udimCounter.Y.Offset);
-		end;
-		if addY then
-			udimCounter = UDim2.new(udimCounter.X.Scale, udimCounter.X.Offset, udimCounter.Y.Scale + udim.Y.Scale, udimCounter.Y.Offset + udim.Y.Offset);
-		end;
-	end);
-	return udimCounter;
-end;
-local function createBorder(parent, borderWidth, borderColor, borderTransparency)
-	if borderWidth == nil then borderWidth = 1; end;
-	if borderColor == nil then borderColor = Color3.fromRGB(13, 20, 26); end;
-	if borderTransparency == nil then borderTransparency = 0; end;
-	local borderLeft = Instance.new("Frame");
-	borderLeft.Size = UDim2.new(0, borderWidth, 1, 0);
-	borderLeft.BorderSizePixel = 0;
-	borderLeft.BackgroundColor3 = borderColor;
-	borderLeft.Transparency = borderTransparency;
-	borderLeft.Name = "BL";
-	borderLeft.Parent = parent;
-	local borderRight = Instance.new("Frame");
-	borderRight.Size = UDim2.new(0, borderWidth, 1, 0);
-	borderRight.BorderSizePixel = 0;
-	borderRight.Position = UDim2.new(1, 0, 0, 0);
-	borderRight.AnchorPoint = Vector2.new(1, 0);
-	borderRight.BackgroundColor3 = borderColor;
-	borderRight.Transparency = borderTransparency;
-	borderRight.Name = "BR";
-	borderRight.Parent = parent;
-	local borderTop = Instance.new("Frame");
-	borderTop.Size = UDim2.new(1, 0, 0, borderWidth);
-	borderTop.BorderSizePixel = 0;
-	borderTop.BackgroundColor3 = borderColor;
-	borderTop.Transparency = borderTransparency;
-	borderTop.Name = "BT";
-	borderTop.Parent = parent;
-	local borderBottom = Instance.new("Frame");
-	borderBottom.Size = UDim2.new(1, 0, 0, borderWidth);
-	borderBottom.BorderSizePixel = 0;
-	borderBottom.AnchorPoint = Vector2.new(0, 1);
-	borderBottom.Position = UDim2.new(0, 0, 1, 0);
-	borderBottom.BackgroundColor3 = borderColor;
-	borderBottom.Transparency = borderTransparency;
-	borderBottom.Name = "BB";
-	borderBottom.Parent = parent;
-	local containing = Instance.new("Frame");
-	containing.BorderSizePixel = 0;
-	containing.BackgroundTransparency = 1;
-	containing.Size = UDim2.new(1, -2, 1, -1);
-	containing.Position = UDim2.new(0, 1, 0, 0);
-	containing.Parent = parent;
-	return {
-		["borders"] = { borderTop, borderBottom, borderLeft, borderRight };
-		["containingFrame"] = containing;
-	};
-end;
-local UITable;
+              <string name="Name">DraggableObject</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+--[[
+	@Author: Spynaz
+	@Description: Enables dragging on GuiObjects. Supports both mouse and touch.
+	For instructions on how to use this module, go to this link:
+	https://devforum.roblox.com/t/simple-module-for-creating-draggable-gui-elements/230678
+	Ported by person4268 to roblox-ts
+]]
+local UserInputService = game:GetService("UserInputService")
+local DraggableObject
 do
-	UITable = setmetatable({}, {
-		__tostring = function() return "UITable" end;
-	});
-	UITable.__index = UITable;
-	function UITable.new(...)
-		local self = setmetatable({}, UITable);
-		self:constructor(...);
-		return self;
-	end;
-	function UITable:constructor(gui, parent, columns, size, position, rowsClickable)
-		if rowsClickable == nil then rowsClickable = true; end;
-		self.columnFrames = {};
-		self.columns = columns;
-		self.columnCount = #columns;
-		self.gui = gui;
-		self.parent = parent;
-		self.rowsClickable = rowsClickable;
-		self.tableData = {};
-		self.tableFrame = self.gui:createInvisibleFrame(parent, "Table", size, position, nil);
-		local returnVal = createBorder(self.tableFrame, nil, nil, 0.3);
-		self.mainFrame = returnVal.containingFrame;
-		self.columnBar = self.gui:createInvisibleFrame(self.mainFrame, "TitleBar", UDim2.new(1, 0, 0, 15), UDim2.new(0, 0, 0, 1));
-		self.columnBar.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
-		self.columnBar.BackgroundTransparency = 0.4;
-		self.scrollingFrame = Instance.new("ScrollingFrame");
-		self.scrollingFrame.Parent = self.mainFrame;
-		self.scrollingFrame.Size = UDim2.new(1, 0, 1 - self.columnBar.Size.Y.Scale, -self.columnBar.Size.Y.Offset);
-		self.scrollingFrame.Position = UDim2.new(0, 0, self.columnBar.Size.Y.Scale, self.columnBar.Size.Y.Offset);
-		self.scrollingFrame.BackgroundTransparency = 1;
-		local i = 0;
-		TS.array_forEach(self.columns, function(column)
-			if i ~= self.columnCount - 1 then
-				self:createColumnTab(column, i, self.columnCount);
+	DraggableObject = setmetatable({}, {
+		__tostring = function()
+			return "DraggableObject"
+		end,
+	})
+	DraggableObject.__index = DraggableObject
+	function DraggableObject.new(...)
+		local self = setmetatable({}, DraggableObject)
+		self:constructor(...)
+		return self
+	end
+	function DraggableObject:constructor(Object, ActuallyDragThis, dragInX, dragInY, resizeInstead)
+		if dragInX == nil then
+			dragInX = true
+		end
+		if dragInY == nil then
+			dragInY = true
+		end
+		if resizeInstead == nil then
+			resizeInstead = false
+		end
+		self.Dragging = false
+		self.Object = Object
+		self.ActuallyDragThis = ActuallyDragThis
+		self.dragInX = dragInX
+		self.dragInY = dragInY
+		self.resizeInstead = resizeInstead
+	end
+	function DraggableObject:Enable()
+		local object = self.Object
+		local ActuallyDragThis = self.ActuallyDragThis
+		local dragInput
+		local dragStart
+		local startPos
+		local preparingToDrag = false
+		local dragInX = self.dragInX
+		local dragInY = self.dragInY
+		local resizeInstead = self.resizeInstead
+		local function update(input)
+			local _0 = input.Position
+			local _1 = dragStart
+			local delta = _0 - _1
+			local newPosition = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+			local dragThisThing
+			if ActuallyDragThis then
+				dragThisThing = ActuallyDragThis
 			else
-				self:createColumnTab(column, i, self.columnCount, false);
-			end;
-			i = i + 1;
-		end);
-	end;
-	function UITable:getColPositionFromIndex(index, totalCount)
-		if index == 0 then
-			return 0;
-		end;
-		return 1 / totalCount * index;
-	end;
-	function UITable:getTextHeightFromIndex(col, index)
-		if index == 0 then
-			return 0;
-		end;
-		local data = self.tableData[col];
-		if data then
-			local lastEntryData = data[index - 1];
-			if lastEntryData then
-				return TS.map_size(data) * lastEntryData.textLabel.AbsoluteSize.Y;
-			end;
-			warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col));
-			return 0;
-		end;
-		warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col));
-		return 0;
-	end;
-	function UITable:selectHandler(col, index)
-		warn("Clicked: " .. tostring(col) .. ", " .. tostring(index));
-		if self.rowsClickable then
-			if self.selectedRow ~= nil then
-				do
-					local i = 0;
-					while i < #self.columns do
-						local colData = self.tableData[i];
-						if colData then
-							local entryData = colData[self.selectedRow];
-							if entryData then
-								entryData.textLabel.BackgroundTransparency = 1;
-							end;
-						end;
-						i = i + 1;
-					end;
-				end;
-			end;
-			do
-				local i = 0;
-				while i < #self.columns do
-					local colData = self.tableData[i];
-					if colData then
-						local entryData = colData[index];
-						if entryData then
-							entryData.textLabel.BackgroundTransparency = 0.25;
-						end;
-					end;
-					i = i + 1;
-				end;
-			end;
-			self.selectedRow = index;
-			if self.onRowSelect then
-				self.onRowSelect(index);
-			end;
-		end;
-	end;
-	function UITable:createEntryInColumn(column, index, text)
-		local col = self.columnFrames[column];
-		if col then
-			local lbl = self.gui:createGuiLabelBtn(col.frame, text, UDim2.new(1, 0, 0.08, 0), UDim2.new(0, 0, 0, self:getTextHeightFromIndex(column, index)), nil, text, true);
-			lbl.TextWrapped = true;
-			local onSel = function()
-				self:selectHandler(column, index);
-			end;
-			lbl.MouseButton1Click:Connect(onSel);
-			lbl.TouchTap:Connect(onSel);
-			local colData = self.tableData[column];
-			if colData then
-				colData[index] = {
-					["textLabel"] = lbl;
-					["value"] = text;
-				};
-			end;
-		else
-			warn("Invalid col id " .. tostring(column));
-		end;
-	end;
-	function UITable:addRow(index, data)
-		do
-			local i = 0;
-			while i < #data do
-				self:createEntryInColumn(i, index, data[i + 1]);
-				i = i + 1;
-			end;
-		end;
-	end;
-	function UITable:removeRow(index)
-		TS.map_forEach(self.tableData, function(col)
-			local data = col[index];
-			if data then
-				data.textLabel:Destroy();
-				col[index] = nil;
-			end;
-		end);
-	end;
-	function UITable:clearChart()
-		TS.map_forEach(self.tableData, function(col)
-			TS.map_forEach(col, function(index)
-				index.textLabel:Destroy();
-			end);
-			do
-				local i = 0;
-				while i < TS.map_size(col) do
-					col[i] = nil;
-					i = i + 1;
-				end;
-			end;
-		end);
-	end;
-	function UITable:createColumnTab(name, index, totalCount, createDragger)
-		if createDragger == nil then createDragger = true; end;
-		local containerFrame = self.gui:createInvisibleFrame(self.scrollingFrame, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 0, 0, 0));
-		local data = {
-			["name"] = name;
-			["frame"] = containerFrame;
-		};
-		local titleText = self.gui:createGuiLabel(self.columnBar, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 2, 0, 0), nil, name);
-		titleText.TextXAlignment = Enum.TextXAlignment.Left;
-		titleText.TextWrapped = true;
-		if createDragger then
-			local titleDragger = self.gui:createInvisibleFrame(titleText, "Dragger", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0), nil);
-			titleDragger.BackgroundTransparency = 0.1;
-			local border = self.gui:createInvisibleFrame(containerFrame, "Border", UDim2.new(0, 1, 1, 0), UDim2.new(1, 0, 0, 0), nil);
-			border.BackgroundTransparency = 0.9;
-		end;
-		local _0 = self.columnFrames;
-		_0[index] = data;
-		local _2 = self.tableData;
-		local _3 = index;
-		local _1 = {};
-		_2[_3] = _1;
-	end;
-	function UITable:columnNameToIndex(name)
-		local i = 0;
-		do
-			while self.columnFrames[i].name ~= name do
-				i = i + 1;
-			end;
-		end;
-		return i;
-	end;
-end;
-exports.addUDim2, exports.UITable = addUDim2, UITable;
-return exports;
+				dragThisThing = object
+			end
+			if not resizeInstead then
+				if dragInX and dragInY then
+					dragThisThing.Position = newPosition
+				else
+					if dragInX then
+						dragThisThing.Position = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Position.Y.Scale, dragThisThing.Position.Y.Offset)
+					end
+					if dragInY then
+						dragThisThing.Position = UDim2.new(dragThisThing.Position.X.Scale, dragThisThing.Position.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset)
+					end
+				end
+			else
+				if dragInX and dragInY then
+					dragThisThing.Size = newPosition
+				else
+					if dragInX then
+						dragThisThing.Size = UDim2.new(newPosition.X.Scale, newPosition.X.Offset, dragThisThing.Size.Y.Scale, dragThisThing.Size.Y.Offset)
+					end
+					if dragInY then
+						dragThisThing.Size = UDim2.new(dragThisThing.Size.X.Scale, dragThisThing.Size.X.Offset, newPosition.Y.Scale, newPosition.Y.Offset)
+					end
+				end
+			end
+			return newPosition
+		end
+		self.InputBegan = object.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				preparingToDrag = true
+				local connection
+				connection = (input.Changed):Connect(function()
+					if input.UserInputState == Enum.UserInputState.End and (self.Dragging or preparingToDrag) then
+						self.Dragging = false
+						connection:Disconnect()
+						local _0 = self.DragEnded
+						if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+							_0 = not preparingToDrag
+						end
+						if _0 then
+							self.DragEnded()
+						end
+						preparingToDrag = false
+					end
+				end)
+			end
+		end)
+		self.InputChanged = object.InputChanged:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				dragInput = input
+			end
+		end)
+		self.InputChanged2 = UserInputService.InputChanged:Connect(function(input)
+			if object.Parent == nil then
+				self:Disable()
+				return nil
+			end
+			if preparingToDrag then
+				preparingToDrag = false
+				local _0 = self.DragStarted
+				if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+					self.DragStarted()
+				end
+				self.Dragging = true
+				dragStart = input.Position
+				if not resizeInstead then
+					if ActuallyDragThis then
+						startPos = ActuallyDragThis.Position
+					else
+						startPos = object.Position
+					end
+				else
+					if ActuallyDragThis then
+						startPos = ActuallyDragThis.Size
+					else
+						startPos = object.Size
+					end
+				end
+			end
+			if input == dragInput and self.Dragging then
+				local newPosition = update(input)
+				local _0 = self.Dragged
+				if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+					self.Dragged(newPosition)
+				end
+			end
+		end)
+	end
+	function DraggableObject:Disable()
+		if self.InputBegan then
+			self.InputBegan:Disconnect()
+		end
+		if self.InputChanged then
+			self.InputChanged:Disconnect()
+		end
+		if self.InputChanged2 then
+			self.InputChanged2:Disconnect()
+		end
+		if self.Dragging then
+			self.Dragging = false
+			local _0 = self.DragEnded
+			if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+				self.DragEnded()
+			end
+		end
+	end
+end
+return {
+	DraggableObject = DraggableObject,
+}
 ]]></string>
             </Properties>
           </Item>
           <Item class="ModuleScript" referent="55">
             <Properties>
-              <string name="Name">GuiLib</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local DraggableObject = TS.import(script, script.Parent, "DraggableObject").DraggableObject;
-local Gui;
-do
-	Gui = setmetatable({}, {
-		__tostring = function() return "Gui" end;
-	});
-	Gui.__index = Gui;
-	function Gui.new(...)
-		local self = setmetatable({}, Gui);
-		self:constructor(...);
-		return self;
-	end;
-	function Gui:constructor(parentGui, size, title, isDraggable, closeButton, textSize, centered, position, createTitleBar, activeGui)
-		if size == nil then size = UDim2.new(0, 237, 0, 295); end;
-		if title == nil then title = ""; end;
-		if isDraggable == nil then isDraggable = true; end;
-		if closeButton == nil then closeButton = true; end;
-		if textSize == nil then textSize = 14; end;
-		if centered == nil then centered = true; end;
-		if createTitleBar == nil then createTitleBar = true; end;
-		if activeGui == nil then activeGui = false; end;
-		self.titleBarDraggable = false;
-		self.gui = parentGui;
-		self.mainContainer = Instance.new("Frame");
-		self.guiContainer = Instance.new("Frame");
-		if self.gui then
-			self.guiContainer.Parent = self.gui;
-			self.gui.Name = title;
-		else
-			error("GUI not found");
-		end;
-		if centered then
-			if position then
-				error("Cannot specify position if centered");
-			end;
-			self.guiContainer.Position = UDim2.new(0.5 - size.X.Scale / 2, -size.X.Offset / 2, 0.5 - size.Y.Scale / 2, -size.Y.Offset / 2);
-		else
-			if position then
-				self.guiContainer.Position = position;
-			else
-				error("Need position if not centered");
-			end;
-		end;
-		self.guiContainer.Size = size;
-		self.guiContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 22);
-		self.guiContainer.BackgroundTransparency = 0.4;
-		self.guiContainer.BorderColor3 = Color3.fromRGB(13, 20, 26);
-		self.guiContainer.BorderSizePixel = 4;
-		self.guiContainer.Name = "Container";
-		if activeGui then
-			self.guiContainer.Active = true;
-		end;
-		if createTitleBar then
-			self.titleBar = Instance.new("Frame");
-			self.titleBar.BackgroundTransparency = 1;
-			self.titleBar.Size = UDim2.new(1, 0, 0.07, 0);
-			self.titleBar.Name = "TitleBar";
-			self.titleBarDraggable = isDraggable;
-			self.titleBar.Parent = self.guiContainer;
-			self.titleBarBorder = Instance.new("Frame");
-			self.titleBarBorder.BorderSizePixel = 0;
-			self.titleBarBorder.BackgroundTransparency = 0.6;
-			self.titleBarBorder.Position = UDim2.new(0.5, 0, 1, 0);
-			self.titleBarBorder.Size = UDim2.new(0.997, 0, 0, 1);
-			self.titleBarBorder.AnchorPoint = Vector2.new(0.5, 0.5);
-			self.titleBarBorder.Parent = self.titleBar;
-			self.titleBarBorder.Name = "Border";
-			self.titleBarLabel = Instance.new("TextLabel");
-			self.titleBarLabel.Name = "Title";
-			self.titleBarLabel.Text = title;
-			self.titleBarLabel.Position = UDim2.new(0.02, 0, 0.5, 0);
-			self.titleBarLabel.Size = UDim2.new(1, 0, 0.5, 0);
-			self.titleBarLabel.TextSize = textSize;
-			self.titleBarLabel.TextXAlignment = Enum.TextXAlignment.Left;
-			self.titleBarLabel.BackgroundTransparency = 1;
-			self.titleBarLabel.AnchorPoint = Vector2.new(0, 0.5);
-			self.titleBarLabel.Font = Enum.Font.SourceSans;
-			self.titleBarLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
-			self.titleBarLabel.Parent = self.titleBar;
-			if isDraggable then
-				self.dragger = DraggableObject.new(self.titleBar, self.guiContainer);
-				self.dragger:Enable();
-			end;
-			if closeButton then
-				self.titleBarCloseBtn = Instance.new("TextButton");
-				self.titleBarCloseBtn.Name = "Close";
-				self.titleBarCloseBtn.AnchorPoint = Vector2.new(1, 0);
-				self.titleBarCloseBtn.Position = UDim2.new(1, 0, 0, 0);
-				self.titleBarCloseBtn.Size = UDim2.new(0.08, 0, 1, 0);
-				self.titleBarCloseBtn.BackgroundTransparency = 1;
-				self.titleBarCloseBtn.Text = "X";
-				self.titleBarCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255);
-				self.titleBarCloseBtn.Parent = self.titleBar;
-				self.titleBarCloseBtn.MouseButton1Click:Connect(function()
-					self:close();
-				end);
-			end;
-			self.mainContainer = Instance.new("Frame");
-			self.mainContainer.BackgroundTransparency = 1;
-			self.mainContainer.Size = (UDim2.new(2, -3, 1 - self.titleBarBorder.Size.Y.Scale - 0.01, -self.titleBarBorder.Size.Y.Offset) - (self.titleBar.Size));
-			self.mainContainer.Position = UDim2.new(0, 3, self.titleBar.Size.Y.Scale + self.titleBarBorder.Size.Y.Scale, self.titleBar.Size.Y.Offset + self.titleBarBorder.Size.Y.Offset + 5);
-			self.mainContainer.Name = "MainContainer";
-			self.mainContainer.Parent = self.guiContainer;
-		end;
-	end;
-	function Gui:createWindow()
-	end;
-	function Gui:close()
-		if self.OnClose then
-			self.OnClose();
-		end;
-		if self.gui then
-			if self.dragger then
-				self.dragger:Disable();
-			end;
-			self.gui.Enabled = false;
-		end;
-	end;
-	function Gui:open()
-		if self.OnOpen then
-			self.OnOpen();
-		end;
-		if self.gui then
-			self.gui.Enabled = true;
-			if self.dragger then
-				self.dragger:Enable();
-			end;
-		end;
-	end;
-	function Gui:createInvisibleFrame(Parent, Name, Size, Position, AnchorPoint)
-		local newFrame = Instance.new("Frame");
-		if Name ~= "" and Name then
-			newFrame.Name = Name;
-		end;
-		if Size then
-			newFrame.Size = Size;
-		end;
-		if Position then
-			newFrame.Position = Position;
-		end;
-		if AnchorPoint then
-			newFrame.AnchorPoint = AnchorPoint;
-		end;
-		newFrame.BorderSizePixel = 0;
-		newFrame.BackgroundTransparency = 1;
-		newFrame.Parent = Parent;
-		return newFrame;
-	end;
-	function Gui:createGuiButton(Parent, Name, Size, Position, AnchorPoint, ButtonText)
-		local newButton = Instance.new("TextButton");
-		newButton.BackgroundColor3 = Color3.fromRGB(21, 21, 21);
-		newButton.TextColor3 = Color3.fromRGB(255, 255, 255);
-		newButton.BackgroundTransparency = 0.17;
-		if Name ~= "" and Name then
-			newButton.Name = Name;
-		end;
-		if Size then
-			newButton.Size = Size;
-		end;
-		if not (Size) then
-			newButton.Size = UDim2.new(0.2, 0, 0.08, 0);
-		end;
-		if Position then
-			newButton.Position = Position;
-		end;
-		if AnchorPoint then
-			newButton.AnchorPoint = AnchorPoint;
-		end;
-		if ButtonText ~= "" and ButtonText then
-			newButton.Text = ButtonText;
-		end;
-		newButton.Parent = Parent;
-		return newButton;
-	end;
-	function Gui:createGuiLabel(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
-		if alignLeft == nil then alignLeft = false; end;
-		local newLabel = Instance.new("TextLabel");
-		newLabel.BackgroundTransparency = 1;
-		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
-		newLabel.BorderSizePixel = 0;
-		if Name ~= "" and Name then
-			newLabel.Name = Name;
-		end;
-		if Size then
-			newLabel.Size = Size;
-		end;
-		if not (Size) then
-			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0);
-		end;
-		if Position then
-			newLabel.Position = Position;
-		end;
-		if AnchorPoint then
-			newLabel.AnchorPoint = AnchorPoint;
-		end;
-		if LabelText ~= "" and LabelText then
-			newLabel.Text = LabelText;
-		end;
-		if alignLeft then
-			newLabel.TextXAlignment = Enum.TextXAlignment.Left;
-		end;
-		newLabel.Parent = Parent;
-		return newLabel;
-	end;
-	function Gui:createGuiLabelBtn(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
-		if alignLeft == nil then alignLeft = false; end;
-		local newLabel = Instance.new("TextButton");
-		newLabel.BackgroundTransparency = 1;
-		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255);
-		newLabel.BorderSizePixel = 0;
-		if Name ~= "" and Name then
-			newLabel.Name = Name;
-		end;
-		if Size then
-			newLabel.Size = Size;
-		end;
-		if not (Size) then
-			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0);
-		end;
-		if Position then
-			newLabel.Position = Position;
-		end;
-		if AnchorPoint then
-			newLabel.AnchorPoint = AnchorPoint;
-		end;
-		if LabelText ~= "" and LabelText then
-			newLabel.Text = LabelText;
-		end;
-		if alignLeft then
-			newLabel.TextXAlignment = Enum.TextXAlignment.Left;
-		end;
-		newLabel.Parent = Parent;
-		return newLabel;
-	end;
-end;
-local function createScreenGui(Parent, Name)
-	if Name == nil then Name = "Gui"; end;
-	local newGui = Instance.new("ScreenGui");
-	newGui.Name = Name;
-	newGui.Parent = Parent;
-	newGui.Enabled = false;
-	return newGui;
-end;
-exports.Gui, exports.createScreenGui = Gui, createScreenGui;
-return exports;
+              <string name="Name">Gui</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Net = TS.import(script, TS.getModule(script, "net").out)
+local WorldGeneratorSelector = TS.import(script, script.Parent, "WorldGeneratorSelector").default
+local DebugGui = TS.import(script, script.Parent, "DebugGui").default
+local WorldGenProgress = TS.import(script, script.Parent, "WorldGenProgress").default
+local gui = {}
+local function initalizeAllGuis()
+	print("[Info]: Initializing GUIs")
+	local plrGui = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+	gui[("WGS")] = WorldGeneratorSelector(plrGui)
+	gui[("WGP")] = WorldGenProgress(plrGui)
+	if game:GetService("RunService"):IsStudio() or game:GetService("Players").LocalPlayer.Name == "person4268" then
+		gui[("Debug")] = DebugGui(plrGui)
+		gui.Debug:open()
+	end
+end
+local _0 = Net.WaitForClientEventAsync("OpenGui")
+local _1 = function(event)
+	event:Connect(function(guiToOpen)
+		if gui[guiToOpen] then
+			gui[guiToOpen]:open()
+		end
+	end)
+end
+_0:andThen(_1)
+local _2 = Net.WaitForClientEventAsync("CloseGui")
+local _3 = function(event)
+	event:Connect(function(guiToClose)
+		if gui[guiToClose] then
+			gui[guiToClose]:close()
+		end
+	end)
+end
+_2:andThen(_3)
+local function openGui(gui_)
+	if gui_ ~= "" and gui_ then
+		gui[gui_]:open()
+	end
+end
+local function closeGui(gui_)
+	if gui_ ~= "" and gui_ then
+		gui[gui_]:close()
+	end
+end
+return {
+	initalizeAllGuis = initalizeAllGuis,
+	openGui = openGui,
+	closeGui = closeGui,
+}
 ]]></string>
             </Properties>
           </Item>
           <Item class="ModuleScript" referent="56">
             <Properties>
+              <string name="Name">GuiExtension</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local function addUDim2(udims, addX, addY)
+	if addX == nil then
+		addX = true
+	end
+	if addY == nil then
+		addY = true
+	end
+	local udimCounter = UDim2.new()
+	local _0 = udims
+	local _1 = function(udim)
+		if addX and addY then
+			local _2 = udimCounter
+			local _3 = udim
+			udimCounter = _2 + _3
+		end
+		if addX then
+			udimCounter = UDim2.new(udimCounter.X.Scale + udim.X.Scale, udimCounter.X.Offset + udim.X.Offset, udimCounter.Y.Scale, udimCounter.Y.Offset)
+		end
+		if addY then
+			udimCounter = UDim2.new(udimCounter.X.Scale, udimCounter.X.Offset, udimCounter.Y.Scale + udim.Y.Scale, udimCounter.Y.Offset + udim.Y.Offset)
+		end
+	end
+	-- ▼ ReadonlyArray.forEach ▼
+	for _2, _3 in ipairs(_0) do
+		_1(_3, _2 - 1, _0)
+	end
+	-- ▲ ReadonlyArray.forEach ▲
+	return udimCounter
+end
+--[[
+	*
+	* Roblox doesn't have a way to create borders on frames with transparent backgrounds. This creates 4 white frames to circumvent that.
+]]
+local function createBorder(parent, borderWidth, borderColor, borderTransparency)
+	if borderWidth == nil then
+		borderWidth = 1
+	end
+	if borderColor == nil then
+		borderColor = Color3.fromRGB(13, 20, 26)
+	end
+	if borderTransparency == nil then
+		borderTransparency = 0
+	end
+	-- Method of creating border with transparent contents, iirc no other way
+	local borderLeft = Instance.new("Frame")
+	borderLeft.Size = UDim2.new(0, borderWidth, 1, 0)
+	borderLeft.BorderSizePixel = 0
+	borderLeft.BackgroundColor3 = borderColor
+	borderLeft.Transparency = borderTransparency
+	borderLeft.Name = "BL"
+	borderLeft.Parent = parent
+	local borderRight = Instance.new("Frame")
+	borderRight.Size = UDim2.new(0, borderWidth, 1, 0)
+	borderRight.BorderSizePixel = 0
+	borderRight.Position = UDim2.new(1, 0, 0, 0)
+	borderRight.AnchorPoint = Vector2.new(1, 0)
+	borderRight.BackgroundColor3 = borderColor
+	borderRight.Transparency = borderTransparency
+	borderRight.Name = "BR"
+	borderRight.Parent = parent
+	local borderTop = Instance.new("Frame")
+	borderTop.Size = UDim2.new(1, 0, 0, borderWidth)
+	borderTop.BorderSizePixel = 0
+	borderTop.BackgroundColor3 = borderColor
+	borderTop.Transparency = borderTransparency
+	borderTop.Name = "BT"
+	borderTop.Parent = parent
+	local borderBottom = Instance.new("Frame")
+	borderBottom.Size = UDim2.new(1, 0, 0, borderWidth)
+	borderBottom.BorderSizePixel = 0
+	borderBottom.AnchorPoint = Vector2.new(0, 1)
+	borderBottom.Position = UDim2.new(0, 0, 1, 0)
+	borderBottom.BackgroundColor3 = borderColor
+	borderBottom.Transparency = borderTransparency
+	borderBottom.Name = "BB"
+	borderBottom.Parent = parent
+	local containing = Instance.new("Frame")
+	containing.BorderSizePixel = 0
+	containing.BackgroundTransparency = 1
+	containing.Size = UDim2.new(1, -2, 1, -1)
+	containing.Position = UDim2.new(0, 1, 0, 0)
+	containing.Parent = parent
+	return {
+		borders = { borderTop, borderBottom, borderLeft, borderRight },
+		containingFrame = containing,
+	}
+end
+-- WARNING: terrible code
+local UITable
+do
+	UITable = setmetatable({}, {
+		__tostring = function()
+			return "UITable"
+		end,
+	})
+	UITable.__index = UITable
+	function UITable.new(...)
+		local self = setmetatable({}, UITable)
+		self:constructor(...)
+		return self
+	end
+	function UITable:constructor(gui, parent, columns, size, position, rowsClickable)
+		if rowsClickable == nil then
+			rowsClickable = true
+		end
+		self.columnFrames = {}
+		self.columns = columns
+		self.columnCount = #columns
+		self.gui = gui
+		self.parent = parent
+		self.rowsClickable = rowsClickable
+		self.tableData = {}
+		self.tableFrame = self.gui:createInvisibleFrame(parent, "Table", size, position, nil)
+		local returnVal = createBorder(self.tableFrame, nil, nil, 0.3)
+		self.mainFrame = returnVal.containingFrame
+		self.columnBar = self.gui:createInvisibleFrame(self.mainFrame, "TitleBar", UDim2.new(1, 0, 0, 15), UDim2.new(0, 0, 0, 1))
+		self.columnBar.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+		self.columnBar.BackgroundTransparency = 0.4
+		self.scrollingFrame = Instance.new("ScrollingFrame")
+		self.scrollingFrame.Parent = self.mainFrame
+		self.scrollingFrame.Size = UDim2.new(1, 0, 1 - self.columnBar.Size.Y.Scale, -self.columnBar.Size.Y.Offset)
+		self.scrollingFrame.Position = UDim2.new(0, 0, self.columnBar.Size.Y.Scale, self.columnBar.Size.Y.Offset)
+		self.scrollingFrame.BackgroundTransparency = 1
+		local i = 0
+		local _0 = self.columns
+		local _1 = function(column)
+			if i ~= self.columnCount - 1 then
+				self:createColumnTab(column, i, self.columnCount)
+			else
+				self:createColumnTab(column, i, self.columnCount, false)
+			end
+			i += 1
+		end
+		-- ▼ ReadonlyArray.forEach ▼
+		for _2, _3 in ipairs(_0) do
+			_1(_3, _2 - 1, _0)
+		end
+		-- ▲ ReadonlyArray.forEach ▲
+	end
+	function UITable:getColPositionFromIndex(index, totalCount)
+		if index == 0 then
+			return 0
+		end
+		return 1 / totalCount * index
+	end
+	function UITable:getTextHeightFromIndex(col, index)
+		if index == 0 then
+			return 0
+		end
+		local _0 = self.tableData
+		local _1 = col
+		local data = _0[_1]
+		if data then
+			local _2 = data
+			local _3 = index - 1
+			local lastEntryData = _2[_3]
+			if lastEntryData then
+				-- ▼ ReadonlyMap.size ▼
+				local _4 = 0
+				for _ in pairs(data) do
+					_4 += 1
+				end
+				-- ▲ ReadonlyMap.size ▲
+				return _4 * lastEntryData.textLabel.AbsoluteSize.Y
+			end
+			warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col))
+			return 0
+		end
+		warn("Last index nonexistent. Index " .. tostring(index) .. ", col " .. tostring(col))
+		return 0
+	end
+	function UITable:selectHandler(col, index)
+		warn("Clicked: " .. tostring(col) .. ", " .. tostring(index))
+		if self.rowsClickable then
+			if self.selectedRow ~= nil then
+				do
+					local _0 = 0
+					while _0 < #self.columns do
+						local i = _0
+						local _1 = self.tableData
+						local _2 = i
+						local colData = _1[_2]
+						if colData then
+							local _3 = colData
+							local _4 = self.selectedRow
+							local entryData = _3[_4]
+							if entryData then
+								entryData.textLabel.BackgroundTransparency = 1
+							end
+						end
+						_0 = i
+						_0 += 1
+					end
+				end
+			end
+			do
+				local _0 = 0
+				while _0 < #self.columns do
+					local i = _0
+					local _1 = self.tableData
+					local _2 = i
+					local colData = _1[_2]
+					if colData then
+						local _3 = colData
+						local _4 = index
+						local entryData = _3[_4]
+						if entryData then
+							entryData.textLabel.BackgroundTransparency = 0.25
+						end
+					end
+					_0 = i
+					_0 += 1
+				end
+			end
+			self.selectedRow = index
+			local _0 = self.onRowSelect
+			if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+				self.onRowSelect(index)
+			end
+		end
+	end
+	function UITable:createEntryInColumn(column, index, text)
+		local _0 = self.columnFrames
+		local _1 = column
+		local col = _0[_1]
+		if col then
+			local lbl = self.gui:createGuiLabelBtn(col.frame, text, UDim2.new(1, 0, 0.08, 0), UDim2.new(0, 0, 0, self:getTextHeightFromIndex(column, index)), nil, text, true)
+			lbl.TextWrapped = true
+			local onSel = function()
+				self:selectHandler(column, index)
+			end
+			lbl.MouseButton1Click:Connect(onSel)
+			lbl.TouchTap:Connect(onSel)
+			local _2 = self.tableData
+			local _3 = column
+			local colData = _2[_3]
+			if colData then
+				local _4 = colData
+				local _5 = index
+				local _6 = {
+					textLabel = lbl,
+					value = text,
+				}
+				-- ▼ Map.set ▼
+				_4[_5] = _6
+				-- ▲ Map.set ▲
+			end
+		else
+			warn("Invalid col id " .. tostring(column))
+		end
+	end
+	function UITable:addRow(index, data)
+		do
+			local _0 = 0
+			while _0 < #data do
+				local i = _0
+				self:createEntryInColumn(i, index, data[i + 1])
+				_0 = i
+				_0 += 1
+			end
+		end
+	end
+	function UITable:removeRow(index)
+		local _0 = self.tableData
+		local _1 = function(col)
+			local _2 = col
+			local _3 = index
+			local data = _2[_3]
+			if data then
+				data.textLabel:Destroy()
+				local _4 = col
+				local _5 = index
+				-- ▼ Map.delete ▼
+				_4[_5] = nil
+				-- ▲ Map.delete ▲
+			end
+		end
+		-- ▼ ReadonlyMap.forEach ▼
+		for _2, _3 in pairs(_0) do
+			_1(_3, _2, _0)
+		end
+		-- ▲ ReadonlyMap.forEach ▲
+	end
+	function UITable:clearChart()
+		local _0 = self.tableData
+		local _1 = function(col)
+			local _2 = col
+			local _3 = function(index)
+				index.textLabel:Destroy()
+			end
+			-- ▼ ReadonlyMap.forEach ▼
+			for _4, _5 in pairs(_2) do
+				_3(_5, _4, _2)
+			end
+			-- ▲ ReadonlyMap.forEach ▲
+			do
+				local _4 = 0
+				while true do
+					local i = _4
+					-- ▼ ReadonlyMap.size ▼
+					local _5 = 0
+					for _ in pairs(col) do
+						_5 += 1
+					end
+					-- ▲ ReadonlyMap.size ▲
+					if not (_4 < _5) then
+						break
+					end
+					local _6 = col
+					local _7 = i
+					-- ▼ Map.delete ▼
+					_6[_7] = nil
+					-- ▲ Map.delete ▲
+					_4 = i
+					_4 += 1
+				end
+			end
+		end
+		-- ▼ ReadonlyMap.forEach ▼
+		for _2, _3 in pairs(_0) do
+			_1(_3, _2, _0)
+		end
+		-- ▲ ReadonlyMap.forEach ▲
+	end
+	function UITable:createColumnTab(name, index, totalCount, createDragger)
+		if createDragger == nil then
+			createDragger = true
+		end
+		local containerFrame = self.gui:createInvisibleFrame(self.scrollingFrame, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 0, 0, 0))
+		local data = {
+			name = name,
+			frame = containerFrame,
+		}
+		local titleText = self.gui:createGuiLabel(self.columnBar, name, UDim2.new(1 / totalCount, -2, 1, 0), UDim2.new(self:getColPositionFromIndex(index, totalCount), 2, 0, 0), nil, name)
+		titleText.TextXAlignment = Enum.TextXAlignment.Left
+		titleText.TextWrapped = true
+		if createDragger then
+			local titleDragger = self.gui:createInvisibleFrame(titleText, "Dragger", UDim2.new(0, 1, 1, 0), UDim2.new(1, -1, 0, 0), nil)
+			titleDragger.BackgroundTransparency = 0.1
+			local border = self.gui:createInvisibleFrame(containerFrame, "Border", UDim2.new(0, 1, 1, 0), UDim2.new(1, 0, 0, 0), nil)
+			border.BackgroundTransparency = 0.9
+		end
+		local _0 = self.columnFrames
+		local _1 = index
+		local _2 = data
+		-- ▼ Map.set ▼
+		_0[_1] = _2
+		-- ▲ Map.set ▲
+		local _3 = self.tableData
+		local _4 = index
+		-- ▼ Map.set ▼
+		_3[_4] = {}
+		-- ▲ Map.set ▲
+	end
+	function UITable:columnNameToIndex(name)
+		local i = 0
+		while true do
+			local _0 = self.columnFrames
+			local _1 = i
+			if not ((_0[_1]).name ~= name) then
+				break
+			end
+			i += 1
+		end
+		return i
+	end
+end
+local ProgressBar
+do
+	ProgressBar = setmetatable({}, {
+		__tostring = function()
+			return "ProgressBar"
+		end,
+	})
+	ProgressBar.__index = ProgressBar
+	function ProgressBar.new(...)
+		local self = setmetatable({}, ProgressBar)
+		self:constructor(...)
+		return self
+	end
+	function ProgressBar:constructor(parent, parentGui, postiion, size, color, hasProgressLabel)
+		if color == nil then
+			color = Color3.fromRGB(98, 195, 255)
+		end
+		if hasProgressLabel == nil then
+			hasProgressLabel = true
+		end
+		self.initialFrame = Instance.new("Frame")
+		self.initialFrame.Parent = parent
+		self.initialFrame.Position = postiion
+		self.initialFrame.Size = size
+		self.initialFrame.BackgroundTransparency = 1
+		self.initialFrame.Name = "ProgressBar"
+		self.hasProgressLabel = hasProgressLabel
+		local result = createBorder(self.initialFrame)
+		self.mainFrame = result.containingFrame
+		self.mainFrame.Name = "Bar"
+		self.progressFrame = Instance.new("Frame")
+		self.progressFrame.BorderSizePixel = 0
+		self.progressFrame.BackgroundColor3 = color
+		self.progressFrame.BackgroundTransparency = 0.1
+		self.progressFrame.Size = UDim2.new(0, 0, 1, -1)
+		self.progressFrame.Position = UDim2.new(0, 0, 0, 1)
+		self.progressFrame.Parent = self.mainFrame
+		self.progressFrame.Name = "ProgressFrame"
+		if self.hasProgressLabel then
+			self.progressLabel = parentGui:createGuiLabel(self.mainFrame, "Progress", UDim2.new(0.3, 0, 1, 0), UDim2.new(0.5, 0, 0, 0), Vector2.new(0.5, 0), "", false)
+		end
+	end
+	function ProgressBar:updateText(text)
+		if self.progressLabel then
+			self.progressLabel.Text = text
+		end
+	end
+	function ProgressBar:updateProgress(progress)
+		self.progressFrame.Size = UDim2.new(progress, 0, 1, -1)
+	end
+end
+return {
+	addUDim2 = addUDim2,
+	UITable = UITable,
+	ProgressBar = ProgressBar,
+}
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="57">
+            <Properties>
+              <string name="Name">GuiLib</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local DraggableObject = TS.import(script, script.Parent, "DraggableObject").DraggableObject
+-- WARNING: AN ABSOLUTE MESS THAT I DONT PLAN ON REWRITING. INTERFACING WITH IT WAS EVEN WORSE THAN WRITING IT
+local Gui
+do
+	Gui = setmetatable({}, {
+		__tostring = function()
+			return "Gui"
+		end,
+	})
+	Gui.__index = Gui
+	function Gui.new(...)
+		local self = setmetatable({}, Gui)
+		self:constructor(...)
+		return self
+	end
+	function Gui:constructor(parentGui, size, title, isDraggable, closeButton, textSize, centered, position, createTitleBar, activeGui)
+		if size == nil then
+			size = UDim2.new(0, 237, 0, 295)
+		end
+		if title == nil then
+			title = ""
+		end
+		if isDraggable == nil then
+			isDraggable = true
+		end
+		if closeButton == nil then
+			closeButton = true
+		end
+		if textSize == nil then
+			textSize = 14
+		end
+		if centered == nil then
+			centered = true
+		end
+		if createTitleBar == nil then
+			createTitleBar = true
+		end
+		if activeGui == nil then
+			activeGui = false
+		end
+		self.titleBarDraggable = false
+		self.gui = parentGui
+		self.mainContainer = Instance.new("Frame")
+		self.guiContainer = Instance.new("Frame")
+		if self.gui then
+			self.guiContainer.Parent = self.gui
+			self.gui.Name = title
+		else
+			error("GUI not found")
+		end
+		if centered then
+			if position then
+				error("Cannot specify position if centered")
+			end
+			self.guiContainer.Position = UDim2.new(0.5 - size.X.Scale / 2, -size.X.Offset / 2, 0.5 - size.Y.Scale / 2, -size.Y.Offset / 2)
+		else
+			if position then
+				self.guiContainer.Position = position
+			else
+				error("Need position if not centered")
+			end
+		end
+		self.guiContainer.Size = size
+		self.guiContainer.BackgroundColor3 = Color3.fromRGB(22, 22, 22)
+		self.guiContainer.BackgroundTransparency = 0.4
+		self.guiContainer.BorderColor3 = Color3.fromRGB(13, 20, 26)
+		self.guiContainer.BorderSizePixel = 4
+		self.guiContainer.Name = "Container"
+		if activeGui then
+			self.guiContainer.Active = true
+		end
+		if createTitleBar then
+			self.titleBar = Instance.new("Frame")
+			self.titleBar.BackgroundTransparency = 1
+			self.titleBar.Size = UDim2.new(1, 0, 0.07, 0)
+			self.titleBar.Name = "TitleBar"
+			self.titleBarDraggable = isDraggable
+			self.titleBar.Parent = self.guiContainer
+			self.titleBarBorder = Instance.new("Frame")
+			self.titleBarBorder.BorderSizePixel = 0
+			self.titleBarBorder.BackgroundTransparency = 0.6
+			self.titleBarBorder.Position = UDim2.new(0.5, 0, 1, 0)
+			self.titleBarBorder.Size = UDim2.new(0.997, 0, 0, 1)
+			self.titleBarBorder.AnchorPoint = Vector2.new(0.5, 0.5)
+			self.titleBarBorder.Parent = self.titleBar
+			self.titleBarBorder.Name = "Border"
+			self.titleBarLabel = Instance.new("TextLabel")
+			self.titleBarLabel.Name = "Title"
+			self.titleBarLabel.Text = title
+			self.titleBarLabel.Position = UDim2.new(0.02, 0, 0.5, 0)
+			self.titleBarLabel.Size = UDim2.new(1, 0, 0.5, 0)
+			self.titleBarLabel.TextSize = textSize
+			self.titleBarLabel.TextXAlignment = Enum.TextXAlignment.Left
+			self.titleBarLabel.BackgroundTransparency = 1
+			self.titleBarLabel.AnchorPoint = Vector2.new(0, 0.5)
+			self.titleBarLabel.Font = Enum.Font.SourceSans
+			self.titleBarLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+			self.titleBarLabel.Parent = self.titleBar
+			if isDraggable then
+				self.dragger = DraggableObject.new(self.titleBar, self.guiContainer)
+				self.dragger:Enable()
+			end
+			if closeButton then
+				self.titleBarCloseBtn = Instance.new("TextButton")
+				self.titleBarCloseBtn.Name = "Close"
+				self.titleBarCloseBtn.AnchorPoint = Vector2.new(1, 0)
+				self.titleBarCloseBtn.Position = UDim2.new(1, 0, 0, 0)
+				self.titleBarCloseBtn.Size = UDim2.new(0.08, 0, 1, 0)
+				self.titleBarCloseBtn.BackgroundTransparency = 1
+				self.titleBarCloseBtn.Text = "X"
+				self.titleBarCloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+				self.titleBarCloseBtn.Parent = self.titleBar
+				self.titleBarCloseBtn.MouseButton1Click:Connect(function()
+					self:close()
+				end)
+			end
+			self.mainContainer = Instance.new("Frame")
+			self.mainContainer.BackgroundTransparency = 1
+			local _0 = UDim2.new(2, -3, 1 - self.titleBarBorder.Size.Y.Scale - 0.01, -self.titleBarBorder.Size.Y.Offset)
+			local _1 = self.titleBar.Size
+			self.mainContainer.Size = _0 - _1
+			self.mainContainer.Position = UDim2.new(0, 3, self.titleBar.Size.Y.Scale + self.titleBarBorder.Size.Y.Scale, self.titleBar.Size.Y.Offset + self.titleBarBorder.Size.Y.Offset + 5)
+			self.mainContainer.Name = "MainContainer"
+			self.mainContainer.Parent = self.guiContainer
+		end
+	end
+	function Gui:createWindow()
+	end
+	function Gui:close()
+		local _0 = self.OnClose
+		if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+			self.OnClose()
+		end
+		if self.gui then
+			if self.dragger then
+				self.dragger:Disable()
+			end
+			self.gui.Enabled = false
+		end
+	end
+	function Gui:open()
+		local _0 = self.OnOpen
+		if _0 ~= 0 and _0 == _0 and _0 ~= "" and _0 then
+			self.OnOpen()
+		end
+		if self.gui then
+			self.gui.Enabled = true
+			if self.dragger then
+				self.dragger:Enable()
+			end
+		end
+	end
+	function Gui:createInvisibleFrame(Parent, Name, Size, Position, AnchorPoint)
+		local newFrame = Instance.new("Frame")
+		if Name ~= "" and Name then
+			newFrame.Name = Name
+		end
+		if Size then
+			newFrame.Size = Size
+		end
+		if Position then
+			newFrame.Position = Position
+		end
+		if AnchorPoint then
+			newFrame.AnchorPoint = AnchorPoint
+		end
+		newFrame.BorderSizePixel = 0
+		newFrame.BackgroundTransparency = 1
+		newFrame.Parent = Parent
+		return newFrame
+	end
+	function Gui:createGuiButton(Parent, Name, Size, Position, AnchorPoint, ButtonText)
+		local newButton = Instance.new("TextButton")
+		-- color 60,60,60 transparency ~0.06
+		newButton.BackgroundColor3 = Color3.fromRGB(21, 21, 21)
+		newButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+		newButton.BackgroundTransparency = 0.17
+		if Name ~= "" and Name then
+			newButton.Name = Name
+		end
+		if Size then
+			newButton.Size = Size
+		end
+		if not Size then
+			newButton.Size = UDim2.new(0.2, 0, 0.08, 0)
+		end
+		if Position then
+			newButton.Position = Position
+		end
+		if AnchorPoint then
+			newButton.AnchorPoint = AnchorPoint
+		end
+		if ButtonText ~= "" and ButtonText then
+			newButton.Text = ButtonText
+		end
+		newButton.Parent = Parent
+		return newButton
+	end
+	function Gui:createGuiLabel(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
+		if alignLeft == nil then
+			alignLeft = false
+		end
+		local newLabel = Instance.new("TextLabel")
+		newLabel.BackgroundTransparency = 1
+		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		newLabel.BorderSizePixel = 0
+		if Name ~= "" and Name then
+			newLabel.Name = Name
+		end
+		if Size then
+			newLabel.Size = Size
+		end
+		if not Size then
+			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0)
+		end
+		if Position then
+			newLabel.Position = Position
+		end
+		if AnchorPoint then
+			newLabel.AnchorPoint = AnchorPoint
+		end
+		if LabelText ~= "" and LabelText then
+			newLabel.Text = LabelText
+		end
+		if alignLeft then
+			newLabel.TextXAlignment = Enum.TextXAlignment.Left
+		end
+		newLabel.Parent = Parent
+		return newLabel
+	end
+	function Gui:createGuiLabelBtn(Parent, Name, Size, Position, AnchorPoint, LabelText, alignLeft)
+		if alignLeft == nil then
+			alignLeft = false
+		end
+		local newLabel = Instance.new("TextButton")
+		newLabel.BackgroundTransparency = 1
+		newLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+		newLabel.BorderSizePixel = 0
+		if Name ~= "" and Name then
+			newLabel.Name = Name
+		end
+		if Size then
+			newLabel.Size = Size
+		end
+		if not Size then
+			newLabel.Size = UDim2.new(0.2, 0, 0.08, 0)
+		end
+		if Position then
+			newLabel.Position = Position
+		end
+		if AnchorPoint then
+			newLabel.AnchorPoint = AnchorPoint
+		end
+		if LabelText ~= "" and LabelText then
+			newLabel.Text = LabelText
+		end
+		if alignLeft then
+			newLabel.TextXAlignment = Enum.TextXAlignment.Left
+		end
+		newLabel.Parent = Parent
+		return newLabel
+	end
+end
+local function createScreenGui(Parent, Name)
+	if Name == nil then
+		Name = "Gui"
+	end
+	local newGui = Instance.new("ScreenGui")
+	newGui.Name = Name
+	newGui.Parent = Parent
+	newGui.Enabled = false
+	return newGui
+end
+return {
+	Gui = Gui,
+	createScreenGui = createScreenGui,
+}
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="58">
+            <Properties>
+              <string name="Name">WorldGenProgress</string>
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local Net = TS.import(script, TS.getModule(script, "net").out)
+local ProgressBar = TS.import(script, script.Parent, "GuiExtension").ProgressBar
+local _0 = TS.import(script, script.Parent, "GuiLib")
+local createScreenGui = _0.createScreenGui
+local Gui = _0.Gui
+local function WorldGenProgress(plrGui)
+	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0.3, 0, 0.07, 0), "Progress", true, false)
+	local progBar = ProgressBar.new(gui.mainContainer, gui, UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 0.75, 0))
+	local progressTotal = nil
+	local progress = 0
+	local function updateBar(num, total)
+		if num ~= 0 and num == num and num then
+			progress = num
+		end
+		if total ~= 0 and total == total and total then
+			progressTotal = total
+		end
+		progBar:updateText(tostring(progress) .. " / " .. tostring(progressTotal))
+		if progressTotal ~= 0 and progressTotal == progressTotal and progressTotal then
+			progBar:updateProgress(progress / progressTotal)
+		end
+	end
+	local _1 = Net.WaitForClientEventAsync("GenProgressTotalRecieved")
+	local _2 = function(event)
+		event:Connect(function(pTotal)
+			updateBar(nil, pTotal)
+		end)
+	end
+	_1:andThen(_2)
+	local _3 = Net.WaitForClientEventAsync("GenProgressUpdate")
+	local _4 = function(event)
+		event:Connect(function(newVal)
+			updateBar(newVal, nil)
+		end)
+	end
+	_3:andThen(_4)
+	return gui
+end
+local default = WorldGenProgress
+return {
+	default = default,
+}
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="59">
+            <Properties>
               <string name="Name">WorldGeneratorSelector</string>
-              <string name="Source"><![CDATA[-- Compiled with https://roblox-ts.github.io v0.3.2
--- September 25, 2020, 12:55 AM Eastern Daylight Time
-
-local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"));
-local exports = {};
-local _0 = TS.import(script, script.Parent, "GuiLib");
-local Gui, createScreenGui = _0.Gui, _0.createScreenGui;
-local Net = TS.import(script, TS.getModule(script, "net").out);
+              <string name="Source"><![CDATA[-- Compiled with roblox-ts v1.0.0-beta.4
+local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
+local _0 = TS.import(script, script.Parent, "GuiLib")
+local Gui = _0.Gui
+local createScreenGui = _0.createScreenGui
+local Net = TS.import(script, TS.getModule(script, "net").out)
 local function WorldGeneratorSelector(plrGui)
-	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 105, 0, 95), "Select WorldGen", true, false);
-	local selectPlane = gui:createGuiButton(gui.mainContainer, "SelectPlane", UDim2.new(0, 90, 0, 16), UDim2.new(0, 5, 0, 10), nil, "Plane");
-	local selectFlatIsland = gui:createGuiButton(gui.mainContainer, "SelectFlatIsland", UDim2.new(0, 90, 0, 16), (UDim2.new(0, 5, 0, 20) + (UDim2.new(0, 0, selectPlane.Size.Y.Scale, selectPlane.Size.Y.Offset))), nil, "FlatIsland");
-	local selectSimplex = gui:createGuiButton(gui.mainContainer, "SelectSimplex", UDim2.new(0, 90, 0, 16), (UDim2.new(0, 5, 0, 30) + (UDim2.new(0, 0, selectPlane.Size.Y.Scale * 2, selectPlane.Size.Y.Offset * 2))), nil, "Simplex");
-	Net.WaitForClientEventAsync("WGSelection"):andThen(function(WGSelection)
+	-- really need to setup a better way to make guis
+	-- they dont even scale well
+	local gui = Gui.new(createScreenGui(plrGui), UDim2.new(0, 105, 0, 95), "Select WorldGen", true, false)
+	local selectPlane = gui:createGuiButton(gui.mainContainer, "SelectPlane", UDim2.new(0, 90, 0, 16), UDim2.new(0, 5, 0, 10), nil, "Plane")
+	local _1 = gui
+	local _2 = gui.mainContainer
+	local _3 = UDim2.new(0, 90, 0, 16)
+	local _4 = UDim2.new(0, 5, 0, 20)
+	local _5 = UDim2.new(0, 0, selectPlane.Size.Y.Scale, selectPlane.Size.Y.Offset)
+	local selectFlatIsland = _1:createGuiButton(_2, "SelectFlatIsland", _3, _4 + _5, nil, "FlatIsland")
+	local _6 = gui
+	local _7 = gui.mainContainer
+	local _8 = UDim2.new(0, 90, 0, 16)
+	local _9 = UDim2.new(0, 5, 0, 30)
+	local _10 = UDim2.new(0, 0, selectPlane.Size.Y.Scale * 2, selectPlane.Size.Y.Offset * 2)
+	local selectSimplex = _6:createGuiButton(_7, "SelectSimplex", _8, _9 + _10, nil, "Simplex")
+	local _11 = Net.WaitForClientEventAsync("WGSelection")
+	local _12 = function(WGSelection)
 		local function sendPlane()
-			WGSelection:SendToServer("Plane");
-		end;
+			WGSelection:SendToServer("Plane")
+		end
 		local function sendFlatIsland()
-			WGSelection:SendToServer("FlatIsland");
-		end;
+			WGSelection:SendToServer("FlatIsland")
+		end
 		local function sendSimplex()
-			WGSelection:SendToServer("Simplex");
-		end;
-		selectPlane.MouseButton1Click:Connect(sendPlane);
-		selectPlane.TouchTap:Connect(sendPlane);
-		selectFlatIsland.MouseButton1Click:Connect(sendFlatIsland);
-		selectFlatIsland.TouchTap:Connect(sendFlatIsland);
-		selectSimplex.MouseButton1Click:Connect(sendSimplex);
-		selectSimplex.TouchTap:Connect(sendSimplex);
-	end);
-	print("[Info]: Created WGSMenu");
-	return gui;
-end;
-exports.default = WorldGeneratorSelector;
-return exports;
+			WGSelection:SendToServer("Simplex")
+		end
+		selectPlane.MouseButton1Click:Connect(sendPlane)
+		selectPlane.TouchTap:Connect(sendPlane)
+		selectFlatIsland.MouseButton1Click:Connect(sendFlatIsland)
+		selectFlatIsland.TouchTap:Connect(sendFlatIsland)
+		selectSimplex.MouseButton1Click:Connect(sendSimplex)
+		selectSimplex.TouchTap:Connect(sendSimplex)
+	end
+	_11:andThen(_12)
+	print("[Info]: Created WGSMenu")
+	return gui
+end
+local default = WorldGeneratorSelector
+return {
+	default = default,
+}
 ]]></string>
             </Properties>
           </Item>
