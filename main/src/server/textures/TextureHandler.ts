@@ -33,7 +33,7 @@ function applyTexture(block: BlockState) {
         case "grass":
             //randomRotate(block, false, true, false);
             Generic4Side1Top1Bottom(block, globals.textures.grass_side, globals.textures.grass_top, globals.textures.dirt);
-        break;
+            break;
         case "dirt":
             Generic6Side(block, globals.textures.dirt);
             break;

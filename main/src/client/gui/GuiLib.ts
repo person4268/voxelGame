@@ -1,5 +1,5 @@
 import { DraggableObject } from "./DraggableObject";
-
+// WARNING: AN ABSOLUTE MESS THAT I DONT PLAN ON REWRITING. INTERFACING WITH IT WAS EVEN WORSE THAN WRITING IT
 class Gui {
 
     OnOpen?: () => {};
