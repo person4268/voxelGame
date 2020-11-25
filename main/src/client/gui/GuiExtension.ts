@@ -228,5 +228,50 @@ class UITable {
     }
 }
 
-export { addUDim2, UITable }
+class ProgressBar {
+    initialFrame: Frame;
+    mainFrame: Frame;
+    progressFrame: Frame;
+    hasProgressLabel: boolean;
+    progressLabel?: TextLabel;
+
+
+    constructor(parent: GuiObject, parentGui: Gui, postiion: UDim2, size: UDim2, color = Color3.fromRGB(98,195,255), hasProgressLabel = true) {
+        this.initialFrame = new Instance("Frame");
+        this.initialFrame.Parent = parent;
+        this.initialFrame.Position = postiion;
+        this.initialFrame.Size = size;
+        this.initialFrame.BackgroundTransparency = 1;
+        this.initialFrame.Name = "ProgressBar";
+
+        this.hasProgressLabel = hasProgressLabel;
+
+        let result = createBorder(this.initialFrame);
+        this.mainFrame = result.containingFrame;
+        this.mainFrame.Name = "Bar"
+        
+        this.progressFrame = new Instance("Frame");
+        this.progressFrame.BorderSizePixel = 0;
+        this.progressFrame.BackgroundColor3 = color;
+        this.progressFrame.BackgroundTransparency = 0.1;
+        this.progressFrame.Size = new UDim2(0, 0, 1, -1); 
+        this.progressFrame.Position = new UDim2(0, 0, 0, 1); //Adjusting for 1 pixel position error obscuring outline
+        this.progressFrame.Parent = this.mainFrame;
+        this.progressFrame.Name = "ProgressFrame"
+
+        if(this.hasProgressLabel) {
+            this.progressLabel = parentGui.createGuiLabel(this.mainFrame, "Progress", new UDim2(0.3, 0, 1, 0), new UDim2(0.5, 0, 0, 0), new Vector2(0.5, 0), "", false);
+        }
+
+
+    }
+    updateText(text: string) {
+        if(this.progressLabel) this.progressLabel.Text = text;
+    }
+    updateProgress(progress: number) {
+        this.progressFrame.Size = new UDim2(progress, 0, 1, -1);
+    }
+}
+
+export { addUDim2, UITable, ProgressBar }
 

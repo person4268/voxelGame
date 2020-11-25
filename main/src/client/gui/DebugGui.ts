@@ -1,5 +1,5 @@
 import { createScreenGui, Gui } from "./GuiLib";
-import { UITable } from "./GuiExtension";
+import { UITable, ProgressBar } from "./GuiExtension";
 
 function DebugGui(plrGui: PlayerGui) {
     let gui = new Gui(createScreenGui(plrGui), new UDim2(0, 300, 0, 300), "Debug", true, true);
@@ -15,7 +15,7 @@ function DebugGui(plrGui: PlayerGui) {
         guiTestBtn.Text = `${clickCounter}`;
     });
 
-    let uiTable = new UITable(gui, gui.mainContainer,["Column 1", "Column 2", "Column 3"], new UDim2(0.9, 0, 0.5, 0), new UDim2(0.05, 0, 0.4, 0));
+    let uiTable = new UITable(gui, gui.mainContainer,["Column 1", "Column 2", "Column 3"], new UDim2(0.9, 0, 0.2, 0), new UDim2(0.05, 0, 0.4, 0));
     uiTable.addRow(0, ["lol", "lol but better", "not lol"]);
     uiTable.addRow(1, ["bruh", "bruh", "bruh faster"]);
     uiTable.addRow(2, ["secret", "super secret", "very secret"]);
@@ -39,6 +39,7 @@ function DebugGui(plrGui: PlayerGui) {
                 break;
         }
     }
+    let pb = new ProgressBar(gui.mainContainer, gui, new UDim2(0, 0, 0.65, 0), new UDim2(1, 0, 0.07, 0));
     return gui;
 }
 
