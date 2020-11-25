@@ -1,6 +1,6 @@
 import { isBlockReachable } from "shared/isBlockReachable";
 import Net from "@rbxts/net"
-import { blockIds } from "shared/globals";
+import globals, { blockIds } from "shared/globals";
 let Players = game.GetService("Players");
 let UIS = game.GetService("UserInputService");
 let player = Players.LocalPlayer
@@ -66,10 +66,21 @@ mouse.Button2Down.Connect(()=>{
     }
 });
 
+function isObsidian(part: Part) {
+    let firstDecal = part.FindFirstChild("Decal");
+    if(firstDecal) {
+        return (firstDecal as Decal).Texture === globals.textures.obsidian;
+    }
+    return false;
+}
+
 mouse.Button1Down.Connect(()=>{
     if(hoveredOnBlock) {
         Net.WaitForClientEventAsync("DestroyBlock").then(event=>{
             event.SendToServer(hoveredOnBlock, hoveredFace, selectedBlock);
+            if(hoveredOnBlock && !isObsidian(hoveredOnBlock)) { /* Obsidian is unbreakable the trick wont work on it  */
+                hoveredOnBlock.Destroy();
+            }
         })
     }
 });
