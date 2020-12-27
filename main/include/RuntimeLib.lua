@@ -8,23 +8,30 @@ local TS = {}
 -- runtime classes
 TS.Promise = Promise
 
-local Symbol do
+local Symbol
+do
 	Symbol = {}
 	Symbol.__index = Symbol
-	setmetatable(Symbol, {
-		__call = function(_, description)
-			local self = setmetatable({}, Symbol)
-			self.description = "Symbol(" .. (description or "") .. ")"
-			return self
-		end
-	})
+	setmetatable(
+		Symbol,
+		{
+			__call = function(_, description)
+				local self = setmetatable({}, Symbol)
+				self.description = "Symbol(" .. (description or "") .. ")"
+				return self
+			end,
+		}
+	)
 
-	local symbolRegistry = setmetatable({}, {
-		__index = function(self, k)
-			self[k] = Symbol(k)
-			return self[k]
-		end
-	})
+	local symbolRegistry = setmetatable(
+		{},
+		{
+			__index = function(self, k)
+				self[k] = Symbol(k)
+				return self[k]
+			end,
+		}
+	)
 
 	function Symbol:toString()
 		return self.description
@@ -71,6 +78,9 @@ function TS.getModule(object, moduleName)
 
 	repeat
 		local modules = object:FindFirstChild("node_modules")
+		if modules and modules ~= globalModules then
+			modules = modules:FindFirstChild("@rbxts")
+		end
 		if modules then
 			local module = modules:FindFirstChild(moduleName)
 			if module then
@@ -126,7 +136,10 @@ function TS.import(caller, module, ...)
 
 	if not registeredLibraries[module] then
 		if _G[module] then
-			error("Invalid module access! Do you have two TS runtimes trying to import this? " .. module:GetFullName(), 2)
+			error(
+				"Invalid module access! Do you have two TS runtimes trying to import this? " .. module:GetFullName(),
+				2
+			)
 		end
 
 		_G[module] = TS
@@ -191,25 +204,18 @@ function TS.async(callback)
 	end
 end
 
-local function package(...)
-	return select("#", ...), {...}
-end
-
 function TS.await(promise)
 	if not Promise.is(promise) then
 		return promise
 	end
 
-	local size, result = package(promise:await())
-	local ok = table.remove(result, 1)
-	if ok then
-		if size > 2 then
-			return result
-		else
-			return result[1]
-		end
+	local status, value = promise:awaitStatus()
+	if status == Promise.Status.Resolved then
+		return value
+	elseif status == Promise.Status.Rejected then
+		error(value, 2)
 	else
-		error(ok == nil and "The awaited Promise was cancelled" or (size > 2 and result[1] or result), 2)
+		error("The awaited Promise was cancelled", 2)
 	end
 end
 
@@ -272,10 +278,10 @@ function TS.generator(callback)
 				end
 				return {
 					value = value,
-					done = coroutine.status(co) == "dead"
+					done = coroutine.status(co) == "dead",
 				}
 			end
-		end
+		end,
 	}
 end
 
@@ -433,29 +439,29 @@ end
 TS.array_map = array_map
 
 function TS.array_mapFiltered(list, callback)
-    local new = {}
-    local index = 1
+	local new = {}
+	local index = 1
 
-    for i = 1, #list do
-        local result = callback(list[i], i - 1, list)
+	for i = 1, #list do
+		local result = callback(list[i], i - 1, list)
 
-        if result ~= nil then
-            new[index] = result
-            index = index + 1
-        end
-    end
+		if result ~= nil then
+			new[index] = result
+			index = index + 1
+		end
+	end
 
-    return new
+	return new
 end
 
 local function getArraySizeSlow(list)
-    local result = 0
-    for index in pairs(list) do
-        if index > result then
-            result = index
-        end
-    end
-    return result
+	local result = 0
+	for index in pairs(list) do
+		if index > result then
+			result = index
+		end
+	end
+	return result
 end
 
 function TS.array_filterUndefined(list)
@@ -963,7 +969,7 @@ function TS.string_startsWith(str1, str2, pos)
 		pos = math.clamp(pos, 0, n1)
 	end
 
-	local last = pos + n2;
+	local last = pos + n2
 	return last <= n1 and string.sub(str1, pos + 1, last) == str2
 end
 
@@ -979,7 +985,7 @@ function TS.string_endsWith(str1, str2, pos)
 		pos = math.clamp(pos, 0, n1)
 	end
 
-	local start = pos - n2 + 1;
+	local start = pos - n2 + 1
 	return start > 0 and string.sub(str1, start, pos) == str2
 end
 
@@ -1005,12 +1011,16 @@ function TS.iterableCache(iter)
 	return results
 end
 
+local function package(...)
+	return select("#", ...), { ... }
+end
+
 function TS.iterableFunctionCache(iter)
 	local results = {}
 	local count = 0
 
 	while true do
-		local size, t = package(iter());
+		local size, t = package(iter())
 		if size == 0 then break end
 		count = count + 1
 		results[count] = t
