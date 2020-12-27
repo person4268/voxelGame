@@ -273,5 +273,48 @@ class ProgressBar {
     }
 }
 
-export { addUDim2, UITable, ProgressBar }
+function stripXVal(udim: UDim2) {
+    return new UDim2(0, 0, udim.Y.Scale, udim.Y.Offset);
+}
+
+function stripYVal(udim: UDim2) {
+    return new UDim2(udim.X.Scale, udim.X.Offset, 0, 0);
+}
+
+/**
+ * Aligns GUIObjects based on their position and size
+ * Basically this is meant so you can say this:
+ * GuiButton takes up 10% of the frame with 0,10,0,0 spacing above it
+ * and so on, but honestly I'm not sure (writing this long after I wrote this func)
+ */
+function alignBasedOnPercentagesInInvisibleFrame(
+    isHorizontal = true,
+    alignmentInfo: [
+        {
+            "percentage": number,
+            "object": GuiObject,
+            "spacing": UDim2
+        }
+    ]
+) {
+    for(let i=0; i<alignmentInfo.length; i++) {
+        let object = alignmentInfo[i];
+        if(i===0) {object.object.Position = new UDim2(0, 0, 0, 0)} else {
+            let lastObject = alignmentInfo[i-1];
+            if(isHorizontal) {
+                object.object.Position = stripYVal(lastObject.object.Position.add(lastObject.object.Size.add(lastObject.spacing)));
+                object.object.Size = new UDim2(object.percentage+object.spacing.X.Scale, object.spacing.X.Offset, object.object.Size.Y.Scale, object.object.Size.Y.Offset);
+            } else {
+                object.object.Position = stripXVal(lastObject.object.Position.add(lastObject.object.Size.add(lastObject.spacing)));
+                object.object.Size = new UDim2(object.object.Size.X.Scale, object.object.Size.X.Offset, object.percentage+object.spacing.Y.Scale, object.spacing.Y.Offset);
+            }
+        }
+    }
+}
+
+/**
+ * Shorthand for alignBasedOnPercentagesInInvisibleFrame
+ */
+let aBOPIIF = alignBasedOnPercentagesInInvisibleFrame;
+export { addUDim2, UITable, ProgressBar, alignBasedOnPercentagesInInvisibleFrame, aBOPIIF }
 
