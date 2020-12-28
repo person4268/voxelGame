@@ -1,0 +1,25 @@
+This will need to be optimized. Roblox is simply too inefficient at handling
+large amounts of parts. There are a few solutions, one of which would be to
+merge rectangular sections into one large block and split it up into smaller
+ones when broken. This will take more cpu time, and it is important not to take
+too much, or else it will outweigh the part creation lag. Worldgen could also
+be offloaded to another server using HTTPService, but worldgen speed isn't
+really an issue yet. Additionally, we could manually cull unseen blocks away
+from the ROBLOX game engine, which help with memory usage; the engine's method
+of storing blocks stores too much data, creating them on demand might be a
+little better. 
+
+It is also worth considering the idea of creating blocks on the client instead
+of the server, though it doesn't really seem viable and makes things hard,
+though culling would also be hard to implement in a fast enough way, and the 
+overhead may become an issue, making the culling slower. 
+
+Either way, meshing the blocks together and some culling could really help
+with memory and cpu time, and I just realized that culling would make it a much
+better idea to just keep blocks client-side only, keeping the server fast
+enough to relay connections rapidly enough and do other things such as handling
+worldgen. 
+
+I did a quick test, creating around 120,000 blocks, and the generation scripts
+were nearing the script execution time limit, and used about 5800mb of ram, 
+which isn't acceptable at all. 
