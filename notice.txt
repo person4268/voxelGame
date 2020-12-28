@@ -23,3 +23,7 @@ worldgen.
 I did a quick test, creating around 120,000 blocks, and the generation scripts
 were nearing the script execution time limit, and used about 5800mb of ram, 
 which isn't acceptable at all. 
+
+The thing is: it will require refactoring a lot of the codebase to not rely
+on ROBLOX's blocck parts, mainly the texturing component and the block
+placing part could be hacked together in a mildly unmaintainable way. 
