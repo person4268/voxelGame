@@ -82,13 +82,16 @@ class UITable {
         return 1 / totalCount * index;
     }
     getTextHeightFromIndex(col: number, index: number): number {
-        if (index === 0) return 0;
+        if (index === 0) return 3;
         let data = this.tableData.get(col);
         if (data) {
+            
             let lastEntryData = data.get(index - 1);
             if (lastEntryData) {
-                return (data.size() * lastEntryData.textLabel.AbsoluteSize.Y)
+                //return (data.size() * lastEntryData.textLabel.AbsoluteSize.Y)
+                return (lastEntryData.textLabel.Position.Y.Offset + lastEntryData.textLabel.AbsoluteSize.Y + 5);
             }
+            
             warn(`Last index nonexistent. Index ${index}, col ${col}`);
             return 0;
         }
