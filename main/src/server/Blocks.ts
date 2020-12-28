@@ -1,4 +1,4 @@
-import { BlockState } from "server/BlockState"
+import { BlockState } from "server/ServerBlockState"
 import globals, { blockIds } from "shared/globals"
 import Net from "@rbxts/net";
 import { isBlockReachable } from "shared/isBlockReachable";

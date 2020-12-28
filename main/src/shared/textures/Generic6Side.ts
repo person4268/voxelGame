@@ -1,4 +1,4 @@
-import { BlockState } from "server/BlockState";
+import { BlockState } from "server/ServerBlockState";
 import globals from "shared/globals";
 
 function createTexture(assetId: string, side: Enum.NormalId) {

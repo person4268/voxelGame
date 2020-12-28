@@ -1,5 +1,5 @@
 import globals, { blockIds } from "shared/globals"
-import TextureHandler from "./textures/TextureHandler";
+import TextureHandler from "shared/textures/TextureHandler";
 
 export class BlockState {
     id: blockIds = "generic";

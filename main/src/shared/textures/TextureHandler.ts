@@ -1,4 +1,4 @@
-import { BlockState } from "server/BlockState"
+import { BlockState } from "server/ServerBlockState"
 import { Generic6Side } from "./Generic6Side";
 import globals from "shared/globals";
 import { Generic5Side1Top } from "./Generic5Side1Top";
