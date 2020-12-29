@@ -1,0 +1,9 @@
+This is going to require refactoring a lot of code. Items don't really exist in
+any sense in the block placing code. It's hard to figure out where to put
+things. 
+
+We are going to need some code to handle interaction with items and the
+concept of tools most also be prepared for. 
+
+Our creative mode is more or less going to be a hardcoded tool that can do
+anything instantly, and their inventory always contains anything. 
