@@ -17,5 +17,6 @@ An attempt at creating a Minecraft clone game in Roblox using roblox-ts. Current
 5. Open the Rojo tab in RBXStudio and click connect
 
 ## Credits
+Textures are not directly included in the repository. They were instead uploaded as ROBLOX assets and linked into main/src/shared/globals.ts.  
 Textures:
 `© 2010-2012 celeron55, Perttu Ahola <celeron55@gmail.com> Many textures improved or remade by Calinou or other contributors, see LICENSE.md on https://gitorious.org/calinou/carbone`
