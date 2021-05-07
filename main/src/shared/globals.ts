@@ -20,3 +20,4 @@ const globals = {
 
 export default globals
 export type blockIds = "generic" | "grass" | "dirt" | "stone" | "brick" | "obsidian"
+export type itemIds = "generic" | "grass" | "dirt" | "stone" | "brick"
