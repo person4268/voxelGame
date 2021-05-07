@@ -3,6 +3,7 @@ import globals, { blockIds } from "shared/globals"
 import Net from "@rbxts/net";
 import { isBlockReachable } from "shared/isBlockReachable";
 import { BedrockBlockState } from "./BedrockBlockState";
+import { Item } from "./items/Items";
 
 let evtInteract = Net.CreateEvent("InteractBlock");
 let evtDestroy = Net.CreateEvent("DestroyBlock");
@@ -134,6 +135,7 @@ evtInteract.Connect((player, blockUnknown, blockFace, chosenBlock) => {
 
 	let [clickedOnBlock, interactCheckResult] = interactCheck(player, block);
 	if (interactCheckResult && clickedOnBlock) {
+		/*
 		if (clickedOnBlock.interactable) {
 			print("Interacted block is interactable. Interacting instead of placing");
 			clickedOnBlock.interact(player, face)
@@ -141,6 +143,8 @@ evtInteract.Connect((player, blockUnknown, blockFace, chosenBlock) => {
 			print("Placing Block");
 			placeBlockFromOtherBlock(player, clickedOnBlock.position, face, chosenBlock);
 		}
+		*/
+		new Item().onUse(clickedOnBlock, face, Blocks);
 	}
 });
 
@@ -163,5 +167,9 @@ evtDestroy.Connect((player, blockUnknown) => {
 });
 
 
-const Blocks = {blocks, createBlock, deleteBlock, fill, placeBlockFromOtherBlock, createBlocksFromArray, getCorrectBlockState}
+function getBlock(pos: Vector3): BlockStates | undefined {
+	return blocks.get(`${pos.X},${pos.Y},${pos.Z}`);
+}
+
+const Blocks = {blocks, createBlock, deleteBlock, fill, placeBlockFromOtherBlock, createBlocksFromArray, getCorrectBlockState, getBlock}
 export {Blocks, BlockData}
